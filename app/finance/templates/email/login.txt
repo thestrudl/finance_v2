@@ -1,0 +1,11 @@
+Hi {{ name }},
+
+Your login code for {{ site }}:
+
+    {{ code }}
+
+Or open this link on the device you want to log in on:
+{{ link }}
+
+The code and the link work once and expire in {{ minutes }} minutes.
+If you didn't ask to log in, ignore this email.

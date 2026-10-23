@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% from "_macros.html" import delta %}
+{% block title %}{{ cat.label }}{% endblock %}
+{% block eyebrow %}Business{% endblock %}
+
+{% macro entries(rows, empty) %}
+{% if rows %}
+<div class="table-wrap">
+  <table>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td class="muted nowrap">{{ row.occurred_at[8:10] }}.{{ row.occurred_at[5:7] }}.</td>
+        <td>{{ row.comment or '–' }}</td>
+        <td class="r nowrap"><strong>{{ row.amount_cents | eur }}</strong></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}<p class="empty">{{ empty }}</p>{% endif %}
+{% endmacro %}
+
+{% block content %}
+<div class="toolbar">
+  <div class="month-nav">
+    <a class="btn" href="{{ url_for('dashboard.businesses_view') }}" aria-label="All businesses">‹ All</a>
+    <h1>{{ cat.label }}</h1>
+    {% if year > first_year %}<a class="btn" href="{{ url_for('dashboard.business_view', key=cat.key, year=year - 1) }}" aria-label="Previous year">‹</a>{% endif %}
+    <span class="year-label">{{ year }}</span>
+    {% if year < this_year_number %}<a class="btn" href="{{ url_for('dashboard.business_view', key=cat.key, year=year + 1) }}" aria-label="Next year">›</a>{% endif %}
+  </div>
+  <a class="btn" href="{{ url_for('dashboard.transactions', category=cat.key) }}">All {{ all_time.n }} entries</a>
+</div>
+{% if cat.description %}<p class="muted note">{{ cat.description }}</p>{% endif %}
+{% set vs = 'vs ' ~ (year - 1) ~ (' to ' ~ through if is_current else '') %}
+
+<section class="tiles">
+  <div class="tile">
+    <span class="tile-label">Income {{ year }}</span>
+    <span class="tile-value">{{ this_year.income | eur }}</span>
+    {% if last_year %}{{ delta(this_year.income, last_year.income, True, vs) }}{% endif %}
+  </div>
+  <div class="tile">
+    <span class="tile-label">Costs {{ year }}</span>
+    <span class="tile-value">{{ this_year.expense | eur }}</span>
+    {% if last_year %}{{ delta(this_year.expense, last_year.expense, False, vs) }}{% endif %}
+  </div>
+  <div class="tile">
+    <span class="tile-label">Profit {{ year }}</span>
+    <span class="tile-value">{{ this_year.net | eur(True) }}</span>
+    <span class="delta">{% if this_year.margin is not none %}{{ '%.0f' | format(this_year.margin * 100) }}% of income{% endif %}</span>
+    {% if last_year %}<span class="delta">{{ last_year.net | eur(True) }} in {{ year - 1 }}{{ ' same period' if is_current }}</span>{% endif %}
+  </div>
+  <div class="tile">
+    <span class="tile-label">Profit since the start</span>
+    <span class="tile-value">{{ all_time.net | eur(True) }}</span>
+    <span class="delta">since {{ since | month_name(True) if since else '–' }}{% if payback %} · back above zero in {{ payback | month_name(True) }}{% endif %}</span>
+  </div>
+</section>
+
+<section class="card">
+  <h2>Income and costs by month, {{ year }}</h2>
+  <div class="chart"><canvas data-chart="biz-monthly" role="img" aria-label="Income and costs per month; the table below has the numbers"></canvas></div>
+  <script type="application/json" id="biz-monthly">{{ charts.monthly | tojson }}</script>
+  <details>
+    <summary>Show as table</summary>
+    <div class="table-wrap">
+      <table class="num">
+        <thead><tr><th>Month</th><th>Income</th><th>Costs</th><th>Profit</th><th>Profit so far this year</th></tr></thead>
+        <tbody>
+          {% for m in months %}
+          <tr><td>{{ month_names[loop.index0] }}</td><td>{{ m.income | eur }}</td><td>{{ m.expense | eur }}</td>
+            <td>{{ m.net | eur(True) }}</td><td>{{ m.running | eur(True) }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </details>
+</section>
+
+<div class="grid-2">
+  <section class="card">
+    <h2>Income by month{{ ' against ' ~ (year - 1) if charts.season.series | length > 1 }}</h2>
+    <p class="muted note">Shows the season: compare each month with the same month last year rather than the month before.</p>
+    <div class="chart"><canvas data-chart="biz-season" role="img" aria-label="Income per calendar month, this year and last year; the table below has the numbers"></canvas></div>
+    <script type="application/json" id="biz-season">{{ charts.season | tojson }}</script>
+    <details>
+      <summary>Show as table</summary>
+      <div class="table-wrap">
+        <table class="num">
+          <thead><tr><th>Month</th>{% for s in charts.season.series %}<th>{{ s.name }}</th>{% endfor %}</tr></thead>
+          <tbody>
+            {% for i in range(12) %}
+            <tr><td>{{ month_names[i] }}</td>{% for s in charts.season.series %}<td>{{ s['values'][i] | eur if s['values'][i] is not none else '' }}</td>{% endfor %}</tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </details>
+  </section>
+
+  <section class="card">
+    <h2>Profit since the start</h2>
+    <p class="muted note">Every month's profit added up from the first entry: below zero is money still invested, above zero is earned back.</p>
+    <div class="chart"><canvas data-chart="biz-since" role="img" aria-label="Running profit since the first entry; the table below has the numbers"></canvas></div>
+    <script type="application/json" id="biz-since">{{ charts.since | tojson }}</script>
+    <details>
+      <summary>Show as table</summary>
+      <div class="table-wrap">
+        <table class="num">
+          <thead><tr><th>End of</th><th>Profit since the start</th></tr></thead>
+          <tbody>
+            {% for label in charts.since.labels %}
+            <tr><td>{{ label }}</td><td>{{ charts.since.series[0]['values'][loop.index0] | eur(True) }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </details>
+  </section>
+</div>
+
+<div class="grid-2">
+  <section class="card">
+    <h2>Biggest income, {{ year }}</h2>
+    {{ entries(largest_income, 'No income in ' ~ year ~ '.') }}
+  </section>
+  <section class="card">
+    <h2>Biggest costs, {{ year }}</h2>
+    {{ entries(largest_costs, 'No costs in ' ~ year ~ '.') }}
+  </section>
+</div>
+
+<section class="card">
+  <h2>Year by year</h2>
+  <div class="table-wrap">
+    <table class="num">
+      <thead><tr><th>Year</th><th>Income</th><th>Costs</th><th>Profit</th><th>Margin</th></tr></thead>
+      <tbody>
+        {% for y in years %}
+        <tr>
+          <td><a href="{{ url_for('dashboard.business_view', key=cat.key, year=y.year) }}">{{ y.year }}</a>{{ ' (so far)' if y.year | int == this_year_number }}</td>
+          <td>{{ y.income | eur }}</td><td>{{ y.expense | eur }}</td><td><strong>{{ y.net | eur(True) }}</strong></td>
+          <td>{% if y.margin is not none %}{{ '%.0f' | format(y.margin * 100) }}%{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}{{ cat.label }}{% endblock %}
+{% block eyebrow %}Category{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <div class="month-nav">
+    <h1>{{ cat.label }}</h1>
+    <span class="badge badge-{{ cat.grp }}">{{ cat.grp }}</span>
+  </div>
+  <div class="month-nav">
+    {% if cat.grp == 'business' %}<a class="btn" href="{{ url_for('dashboard.business_view', key=cat.key) }}">Business dashboard</a>{% endif %}
+    <a class="btn" href="{{ url_for('dashboard.transactions', category=cat.key) }}">All {{ stats.n }} transactions</a>
+  </div>
+</div>
+{% if cat.description %}<p class="muted note">{{ cat.description }}</p>{% endif %}
+
+{% set has_income = series | map(attribute='income') | select | list | length > 0 %}
+{% set has_expense = series | map(attribute='expense') | select | list | length > 0 %}
+{% set last12 = series[-12:] %}
+<section class="tiles">
+  {% if has_expense %}
+  <div class="tile"><span class="tile-label">Spent this year</span><span class="tile-value">{{ ytd.expense | eur }}</span>
+    <span class="delta">{{ ((last12 | sum(attribute='expense')) / 12) | round | int | eur }} per month over the last 12</span></div>
+  {% endif %}
+  {% if has_income %}
+  <div class="tile"><span class="tile-label">Earned this year</span><span class="tile-value">{{ ytd.income | eur }}</span>
+    <span class="delta">{{ ((last12 | sum(attribute='income')) / 12) | round | int | eur }} per month over the last 12</span></div>
+  {% endif %}
+  <div class="tile"><span class="tile-label">All time</span>
+    <span class="tile-value">{{ (stats.expense if has_expense or not has_income else stats.income) | eur }}</span>
+    <span class="delta">{{ stats.n }} entries since {{ stats.first[:10] if stats.first else '–' }}</span></div>
+</section>
+
+<section class="card">
+  <h2>By month, last 24 months</h2>
+  <div class="chart"><canvas data-chart="category-data" role="img" aria-label="Monthly totals for {{ cat.label }}; the table below has the numbers"></canvas></div>
+  {% set chart_series = [] %}
+  {% if has_income %}{% set _ = chart_series.append({"name": "Income", "values": series | map(attribute='income') | list, "color": "--s1"}) %}{% endif %}
+  {% if has_expense or not has_income %}{% set _ = chart_series.append({"name": "Expenses", "values": series | map(attribute='expense') | list, "color": "--s2"}) %}{% endif %}
+  <script type="application/json" id="category-data">{{ {
+    "labels": series | map(attribute='month') | map('month_name', True) | list,
+    "series": chart_series
+  } | tojson }}</script>
+  <details>
+    <summary>Show as table</summary>
+    <div class="table-wrap">
+      <table class="num">
+        <thead><tr><th>Month</th>{% if has_expense %}<th>Expenses</th>{% endif %}{% if has_income %}<th>Income</th>{% endif %}</tr></thead>
+        <tbody>
+          {% for p in series | reverse %}
+          <tr><td>{{ p.month | month_name(True) }}</td>{% if has_expense %}<td>{{ p.expense | eur }}</td>{% endif %}{% if has_income %}<td>{{ p.income | eur }}</td>{% endif %}</tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </details>
+</section>
+
+<div class="grid-2">
+  <section class="card">
+    <h2>Recent entries</h2>
+    <div class="table-wrap">
+      <table>
+        <tbody>
+          {% for row in recent %}
+          <tr>
+            <td class="muted nowrap">{{ row.occurred_at[:10] }}</td>
+            <td>{{ row.comment }}{% if row.is_income %} <span class="badge">income</span>{% endif %}</td>
+            <td class="r nowrap">{{ row.amount_cents | eur }}</td>
+            <td class="r"><a href="{{ url_for('dashboard.edit_transaction', tx_id=row.id, back=request.path) }}">Edit</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Settings</h2>
+    <form method="post" action="{{ url_for('dashboard.update_category', key=cat.key) }}" class="stack">
+      <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+      <input type="hidden" name="back" value="{{ request.path }}">
+      <label>Name <input name="label" value="{{ cat.label }}" required></label>
+      <label>Group
+        <select name="grp">
+          {% for key, name in groups.items() %}<option value="{{ key }}" {% if cat.grp == key %}selected{% endif %}>{{ name }}</option>{% endfor %}
+        </select>
+      </label>
+      <div class="row">
+        <label>Budget (€) <input name="budget" inputmode="decimal" value="{{ '%.2f' | format(cat.budget_cents / 100) if cat.budget_cents else '' }}"></label>
+        <label>per
+          <select name="budget_period">
+            <option value="month" {% if cat.budget_period == 'month' %}selected{% endif %}>month</option>
+            <option value="year" {% if cat.budget_period == 'year' %}selected{% endif %}>year</option>
+          </select>
+        </label>
+      </div>
+      <label>Notes <textarea name="description" rows="3">{{ cat.description }}</textarea></label>
+      <button type="submit" class="primary">Save</button>
+    </form>
+    <p class="muted small">Spellings that land here: {% for s in spellings %}{{ s.category_raw }} ({{ s.n }}){{ ', ' if not loop.last }}{% endfor %}</p>
+    {% if aliases %}
+    <h3>Merged into {{ cat.label }}</h3>
+    <ul class="plain">
+      {% for a in aliases %}
+      <li>
+        {{ a.alias }} <span class="muted small">{{ a.n }} entr{{ 'y' if a.n == 1 else 'ies' }}</span>
+        <form method="post" action="{{ url_for('dashboard.split_category', key=cat.key) }}" class="inline"
+              data-confirm="Give &quot;{{ a.alias }}&quot; its own category again? Its entries move back to it.">
+          <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+          <input type="hidden" name="alias" value="{{ a.alias }}">
+          <button type="submit" class="link">Split off</button>
+        </form>
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

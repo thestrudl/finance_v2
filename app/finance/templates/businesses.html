@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% from "_macros.html" import delta %}
+{% block title %}Businesses{% endblock %}
+{% block eyebrow %}Business{% endblock %}
+{% block content %}
+<div class="toolbar"><h1>Businesses</h1></div>
+<p class="muted note">
+  Each category in the Business group, with its income and costs. {{ year }} runs up to {{ through }} and is compared
+  with {{ year - 1 }} up to the same date. Groups are set on the <a href="{{ url_for('dashboard.categories_view') }}">Categories</a> page.
+</p>
+
+{% if rows %}
+<div class="business-cards">
+  {% for b in rows %}
+  <a class="card business-card" href="{{ url_for('dashboard.business_view', key=b.key) }}">
+    <div class="business-card-head">
+      <h2>{{ b.label }}</h2>
+      <span class="muted small">since {{ b.since | month_name(True) }}</span>
+    </div>
+    {% if b.description %}<p class="muted small">{{ b.description }}</p>{% endif %}
+    <span class="tile-label">Profit {{ year }}</span>
+    <span class="tile-value">{{ b.this_year.net | eur(True) }}</span>
+    <span class="delta">income {{ b.this_year.income | eur }} · costs {{ b.this_year.expense | eur }}</span>
+    {% if b.last_year.n %}{{ delta(b.this_year.net, b.last_year.net, True, 'vs ' ~ (year - 1)) }}{% endif %}
+    <span class="delta">All time: {{ b.all_time.net | eur(True) }}</span>
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+<p class="empty">No categories in the Business group have entries yet.</p>
+{% endif %}
+{% endblock %}

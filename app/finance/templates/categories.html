@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Categories{% endblock %}
+{% block eyebrow %}Data{% endblock %}
+{% block content %}
+<div class="toolbar"><h1>Categories</h1></div>
+<p class="muted note">
+  Telegram categories are free text, so each spelling is folded in lower case, and through
+  merges you make here. Merging moves every entry over, and future messages with the old spelling follow.
+  Groups decide what “Living costs” and “Without projects &amp; savings” include.
+</p>
+
+<section class="card">
+  <div class="table-wrap">
+    <table class="categories">
+      <thead>
+        <tr><th>Name</th><th>Group</th><th>Budget (€)</th><th class="r">Entries</th><th class="r">Last 12 mo</th><th></th><th>Merge into</th></tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        {% set form_id = 'cat-' ~ loop.index %}
+        <tr>
+          <td>
+            <form id="{{ form_id }}" method="post" action="{{ url_for('dashboard.update_category', key=row.key) }}">
+              <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+              <input type="hidden" name="description" value="{{ row.description }}">
+            </form>
+            <input form="{{ form_id }}" name="label" value="{{ row.label }}" aria-label="Name of {{ row.key }}" class="w-name">
+            <div class="muted small">
+              <a href="{{ url_for('dashboard.category_view', key=row.key) }}">{{ row.key }}</a>{% if row.aliases %} · also {{ row.aliases }}{% endif %}
+            </div>
+          </td>
+          <td>
+            <select form="{{ form_id }}" name="grp" aria-label="Group of {{ row.key }}">
+              {% for key, name in groups.items() %}<option value="{{ key }}" {% if row.grp == key %}selected{% endif %}>{{ name }}</option>{% endfor %}
+            </select>
+          </td>
+          <td class="nowrap">
+            <input form="{{ form_id }}" name="budget" inputmode="decimal" class="w-money" aria-label="Budget for {{ row.key }}"
+                   value="{{ '%.2f' | format(row.budget_cents / 100) if row.budget_cents else '' }}">
+            <select form="{{ form_id }}" name="budget_period" aria-label="Budget period for {{ row.key }}">
+              <option value="month" {% if row.budget_period == 'month' %}selected{% endif %}>/ month</option>
+              <option value="year" {% if row.budget_period == 'year' %}selected{% endif %}>/ year</option>
+            </select>
+          </td>
+          <td class="r muted">{{ row.n }}{% if row.last_used %}<div class="small">{{ row.last_used[:10] }}</div>{% endif %}</td>
+          <td class="r nowrap">
+            {% if row.spent_year %}{{ row.spent_year | eur }}{% endif %}
+            {% if row.earned_year %}<div class="income">+{{ row.earned_year | eur }}</div>{% endif %}
+          </td>
+          <td><button form="{{ form_id }}" type="submit" class="small-btn">Save</button></td>
+          <td>
+            <form method="post" action="{{ url_for('dashboard.merge_category', key=row.key) }}" class="inline"
+                  data-confirm="Merge {{ row.key }} into the selected category? This moves all its entries.">
+              <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+              <select name="target" aria-label="Merge {{ row.key }} into" required>
+                <option value="">…</option>
+                {% for other in rows if other.key != row.key %}<option value="{{ other.key }}">{{ other.label }}</option>{% endfor %}
+              </select>
+              <button type="submit" class="small-btn">Merge</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

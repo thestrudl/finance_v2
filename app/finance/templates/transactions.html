@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% from "_macros.html" import entry_fields %}
+{% block title %}Transactions{% endblock %}
+{% block eyebrow %}Data{% endblock %}
+
+{% block content %}
+<div class="toolbar"><h1>Transactions</h1></div>
+
+<form method="get" class="filters card">
+  <label>Month <input type="month" name="month" value="{{ filters.month }}"></label>
+  <label>Category
+    <select name="category">
+      <option value="">All</option>
+      {% for c in all_categories %}<option value="{{ c.key }}" {% if filters.category == c.key %}selected{% endif %}>{{ c.label }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Type
+    <select name="type">
+      <option value="">Both</option>
+      <option value="expense" {% if filters.type == 'expense' %}selected{% endif %}>Expenses</option>
+      <option value="income" {% if filters.type == 'income' %}selected{% endif %}>Income</option>
+    </select>
+  </label>
+  <label class="grow">Search <input type="search" name="q" value="{{ filters.q }}" placeholder="comment, spelling or person"></label>
+  <button type="submit" class="primary">Filter</button>
+  {% if filters.values() | select | list %}<a href="{{ url_for('dashboard.transactions') }}">Clear</a>{% endif %}
+</form>
+
+<details class="card">
+  <summary>Add a transaction</summary>
+  <form method="post" action="{{ url_for('dashboard.add_transaction') }}" class="filters">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    {{ entry_fields(all_categories, None, default_time) }}
+    <button type="submit" class="primary">Add</button>
+  </form>
+</details>
+
+<p class="muted">{{ summary.n }} transactions · income {{ summary.income | eur }} · expenses {{ summary.expense | eur }}</p>
+
+<section class="card">
+  <div class="table-wrap">
+    <table class="tx">
+      <thead><tr><th>When</th><th>Category</th><th class="r">Amount</th><th>Comment</th><th>Who</th><th></th></tr></thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td class="nowrap muted">{{ row.occurred_at[:16] }}</td>
+          <td><a href="{{ url_for('dashboard.category_view', key=row.category) }}">{{ row.label }}</a>
+            {% if row.category_raw | lower != row.category %}<span class="muted small">({{ row.category_raw }})</span>{% endif %}</td>
+          <td class="r nowrap {{ 'income' if row.is_income }}">{{ '+' if row.is_income }}{{ row.amount_cents | eur }}</td>
+          <td>{{ row.comment }}{% if row.source == 'repeat' %} <span class="badge">repeat</span>{% endif %}{% if row.off_balance %} <span class="badge" title="Outside our accounts: not in the bank &amp; cash estimate">outside</span>{% endif %}</td>
+          <td class="muted small">{{ row.user_name or '' }}</td>
+          <td class="r nowrap actions">
+            <a href="{{ url_for('dashboard.edit_transaction', tx_id=row.id, back=request.full_path) }}">Edit</a>
+            <form method="post" action="{{ url_for('dashboard.delete_transaction', tx_id=row.id) }}" class="inline" data-confirm="Delete this transaction?">
+              <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+              <input type="hidden" name="back" value="{{ request.full_path }}">
+              <button type="submit" class="link danger">Delete</button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="empty">No transactions match.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if pages > 1 %}
+  {% set args = dict(request.args) %}
+  <nav class="pager">
+    {% if page > 1 %}{% set _ = args.update(page=page - 1) %}<a class="btn" href="{{ url_for('dashboard.transactions', **args) }}">‹ Newer</a>{% endif %}
+    <span class="muted">Page {{ page }} of {{ pages }}</span>
+    {% if page < pages %}{% set _ = args.update(page=page + 1) %}<a class="btn" href="{{ url_for('dashboard.transactions', **args) }}">Older ›</a>{% endif %}
+  </nav>
+  {% endif %}
+</section>
+{% endblock %}

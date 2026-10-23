@@ -1,0 +1,248 @@
+{% extends "base.html" %}
+{% from "_macros.html" import delta %}
+{% block title %}Holdings{% endblock %}
+{% block eyebrow %}Holdings{% endblock %}
+{% block content %}
+<div class="toolbar"><h1>Holdings</h1></div>
+
+<section class="tiles">
+  {% if estimate and accounts %}
+  <div class="tile">
+    <span class="tile-label">Net worth, tracked</span>
+    <span class="tile-value">{{ net_worth | eur }}</span>
+    <span class="delta">bank &amp; cash + Interactive Brokers</span>
+  </div>
+  {% endif %}
+  <div class="tile">
+    <span class="tile-label">Bank &amp; cash, estimated</span>
+    {% if estimate %}
+    <span class="tile-value">{{ estimate.amount | eur }}</span>
+    <span class="delta">check of {{ estimate.check.checked_at[8:10] }}.{{ estimate.check.checked_at[5:7] }}. {{ estimate.check.amount_cents | eur }}</span>
+    <span class="delta">then +{{ estimate.income | eur }} in, −{{ estimate.expense | eur }} out</span>
+    {% else %}
+    <span class="tile-value">–</span>
+    <span class="delta">enter a balance check below to start</span>
+    {% endif %}
+  </div>
+  {% if accounts %}
+  <div class="tile">
+    <span class="tile-label">Interactive Brokers</span>
+    <span class="tile-value">{{ ibkr_total | eur }}</span>
+    <span class="delta">at the close of {{ accounts[0].as_of }}</span>
+  </div>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>Bank &amp; cash</h2>
+  <p class="muted note">
+    The latest balance check plus the income and spending logged since. Every check shows how much moved without being logged
+    (fees, interest, forgotten entries). Mark a transaction <em>Outside our accounts</em> when it was paid without touching your money,
+    like a gift or loan paid straight to the seller. From Telegram: <code>balance</code> for the estimate, <code>balance 4520.30</code> for a check.
+  </p>
+  <form method="post" action="{{ url_for('dashboard.holdings_balance') }}" class="filters">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <label>Total in all accounts and cash (€) <input name="amount" inputmode="decimal" required class="w-money-lg"></label>
+    <label>When <input type="datetime-local" name="checked_at" value="{{ default_time }}"></label>
+    <label class="grow">Note <input name="note" placeholder="e.g. OTP 3,200 + Revolut 1,100 + cash 220"></label>
+    <button type="submit" class="primary">Save balance check</button>
+  </form>
+
+  {% if cash_chart.labels | length > 1 %}
+  <p class="muted small chart-note">The line is each day's end balance; squares are balance checks as you read them.</p>
+  <div class="chart"><canvas data-chart="cash-estimate" role="img" aria-label="Estimated bank and cash balance by day, with balance checks marked; the table below has the checks"></canvas></div>
+  <script type="application/json" id="cash-estimate">{{ cash_chart | tojson }}</script>
+  {% endif %}
+
+  {% if checks %}
+  <details {% if checks | length <= 3 %}open{% endif %}>
+    <summary>Balance checks</summary>
+    <div class="table-wrap">
+      <table class="num">
+        <thead><tr><th>When</th><th>In the accounts</th><th>Estimate then</th><th>Not logged</th><th>Note</th></tr></thead>
+        <tbody>
+          {% for c in checks %}
+          <tr>
+            <td>{{ c.checked_at[:16] }} <span class="muted small">{{ c.user_name or '' }} · {{ c.source }}</span></td>
+            <td><strong>{{ c.amount_cents | eur }}</strong></td>
+            <td class="muted">{{ c.expected | eur if c.expected is defined else '' }}</td>
+            <td>{% if c.drift is defined %}<span class="delta {{ 'bad' if c.drift < -100 else ('good' if c.drift > 100 else '') }}">{{ c.drift | eur(True) }}</span>
+              <div class="muted small">over {{ c.days }} day{{ 's' if c.days != 1 }}</div>{% endif %}</td>
+            <td class="muted">{{ c.note }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </details>
+  {% endif %}
+</section>
+
+<div class="toolbar section-head">
+  <h2>Interactive Brokers</h2>
+  {% if configured %}
+  <div class="month-nav">
+    <form method="post" action="{{ url_for('dashboard.holdings_sync') }}" class="inline">
+      <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+      <button type="submit" class="btn">Sync now</button>
+    </form>
+    {% if accounts and accounts[0].history_days < 30 %}
+    <form method="post" action="{{ url_for('dashboard.holdings_sync') }}" class="inline">
+      <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+      <input type="hidden" name="history" value="1">
+      <button type="submit" class="btn">Load a year of history</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+
+<p class="muted note">
+  From IBKR's daily Flex report: values are as of the last market close, in the account's base currency.
+  {% if status.last_success %}Last synced {{ status.last_success[:16] }}.{% endif %}
+  Margin figures (excess liquidity, buying power) aren't part of Flex reports; for a cash account, cash is what's available.
+</p>
+{% if status.last_error %}<p class="flash">Last sync failed: {{ status.last_error }}</p>{% endif %}
+
+{% if not configured %}
+<section class="card">
+  <h2>Connect Interactive Brokers</h2>
+  <ol class="setup">
+    <li>In Client Portal, open <strong>Performance &amp; Reports → Flex Queries</strong> and create an <strong>Activity Flex Query</strong>.
+      Add the sections <em>Account Information</em>, <em>Net Asset Value (NAV) in Base</em>, <em>Open Positions</em> (Summary) and
+      <em>Cash Report</em>; <em>Conversion Rates</em> is optional. Format <strong>XML</strong>, period <strong>Last Business Day</strong>,
+      date format <strong>yyyyMMdd</strong>. Save it and note the <strong>Query ID</strong>.</li>
+    <li>Under <strong>Flex Web Service</strong>, generate a token (lifespan up to a year), ideally limited to the server's IP address.</li>
+    <li>Put both in <code>.env</code> as <code>IBKR_FLEX_TOKEN</code> and <code>IBKR_FLEX_QUERY_ID</code>, then run <code>docker compose up -d</code>.</li>
+  </ol>
+  <p class="muted small">The first sync loads a year of history; after that the server syncs every morning.</p>
+</section>
+{% elif not accounts %}
+<section class="card"><p class="empty">No report stored yet. Press <strong>Sync now</strong>; the first sync loads a year of history.</p></section>
+{% endif %}
+
+{% for a in accounts %}
+{% if accounts | length > 1 %}<h2 class="account-title">{{ a.account }}</h2>{% endif %}
+<section class="tiles">
+  <div class="tile">
+    <span class="tile-label">Account value</span>
+    <span class="tile-value">{{ a.total_cents | eur }}</span>
+    {% if a.month_ago %}{{ delta(a.total_cents, a.month_ago.total_cents, True, 'vs 30 days ago') }}{% endif %}
+    {% if a.year_start %}<span class="delta">{{ (a.total_cents - a.year_start.total_cents) | eur(True) }} this year, deposits included</span>{% endif %}
+  </div>
+  <div class="tile">
+    <span class="tile-label">Cash</span>
+    <span class="tile-value">{{ a.cash_cents | eur }}</span>
+    <span class="delta">{{ '%.1f' | format(a.cash_cents / (a.total_cents or 1) * 100) }}% of the account</span>
+  </div>
+  <div class="tile">
+    <span class="tile-label">Invested</span>
+    <span class="tile-value">{{ a.securities | eur }}</span>
+    <span class="delta">{{ a.positions | length }} position{{ 's' if a.positions | length != 1 }}</span>
+  </div>
+  <div class="tile">
+    <span class="tile-label">Unrealized gain</span>
+    <span class="tile-value">{{ a.unrealized | eur(True) }}</span>
+    {% if a.cost %}<span class="delta {{ 'good' if a.unrealized >= 0 else 'bad' }}">{{ '%+.1f' | format(a.unrealized / a.cost * 100) }}% on {{ a.cost | eur }} cost</span>{% endif %}
+  </div>
+</section>
+<p class="muted small">{{ a.account }} · report of {{ a.as_of }} · base currency {{ a.base_currency }}</p>
+
+{% if a.history_days > 1 %}
+<section class="card">
+  <h2>Account value and cash</h2>
+  <div class="chart"><canvas data-chart="holdings-{{ loop.index }}" role="img" aria-label="Account value and cash over time; the table below has the numbers"></canvas></div>
+  <script type="application/json" id="holdings-{{ loop.index }}">{{ a.chart | tojson }}</script>
+  <details>
+    <summary>Show as table</summary>
+    <div class="table-wrap">
+      <table class="num">
+        <thead><tr><th>Day</th><th>Account value</th><th>Cash</th></tr></thead>
+        <tbody>
+          {% for label in a.chart.labels | reverse %}
+          {% set i = a.chart.labels | length - loop.index %}
+          <tr><td>{{ label }}</td><td>{{ a.chart.series[0]['values'][i] | eur }}</td><td>{{ a.chart.series[1]['values'][i] | eur }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </details>
+</section>
+{% endif %}
+
+<div class="grid-2">
+  <section class="card">
+    <h2>Allocation</h2>
+    <div class="table-wrap">
+      <table class="breakdown">
+        <thead><tr><th>Asset class</th><th class="r">Value</th><th class="r">Share</th></tr></thead>
+        <tbody>
+          {% for row in a.allocation %}
+          <tr>
+            <td>{{ row.label }}</td>
+            <td class="r bar-cell">
+              <span class="bar bar-income" style="width: {{ ([row.share, 0] | max * 100) | round(1) }}%"></span>
+              <span class="amount">{{ row.cents | eur }}</span>
+            </td>
+            <td class="r muted">{{ '%.1f' | format(row.share * 100) }}%</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Cash by currency</h2>
+    {% if a.cash %}
+    <div class="table-wrap">
+      <table class="num">
+        <thead><tr><th>Currency</th><th>Cash</th><th>Settled</th><th>In {{ a.base_currency }}</th></tr></thead>
+        <tbody>
+          {% for c in a.cash %}
+          <tr>
+            <td>{{ c.currency }}</td>
+            <td>{{ '{:,.2f}'.format(c.cash_cents / 100) }}</td>
+            <td class="muted">{{ '{:,.2f}'.format(c.settled_cents / 100) if c.settled_cents is not none else '' }}</td>
+            <td>{{ c.base_cents | eur if c.base_cents is not none else '–' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}<p class="empty">No cash report in the latest statement. Add the Cash Report section to the Flex Query.</p>{% endif %}
+  </section>
+</div>
+
+<section class="card">
+  <h2>Positions</h2>
+  {% if a.positions %}
+  <div class="table-wrap">
+    <table class="num tx">
+      <thead><tr><th>Symbol</th><th>Quantity</th><th>Price</th><th>Value</th><th>In {{ a.base_currency }}</th><th>Share</th><th>Cost</th><th>Unrealized</th></tr></thead>
+      <tbody>
+        {% for p in a.positions %}
+        <tr>
+          <td><strong>{{ p.symbol }}</strong> {% if p.asset_class and p.asset_class != 'STK' %}<span class="badge">{{ p.asset_class }}</span>{% endif %}
+            <div class="muted small">{{ p.description }}</div></td>
+          <td>{{ '{:,.4f}'.format(p.quantity).rstrip('0').rstrip('.') }}</td>
+          <td>{{ '{:,.2f}'.format(p.price) if p.price is not none else '' }} <span class="muted small">{{ p.currency }}</span></td>
+          <td>{{ '{:,.2f}'.format(p.value_cents / 100) }} <span class="muted small">{{ p.currency }}</span></td>
+          <td><strong>{{ p.value_base_cents | eur }}</strong></td>
+          <td class="muted">{{ '%.1f%%' | format(p.percent_of_nav) if p.percent_of_nav is not none else '' }}</td>
+          <td class="muted">{{ p.cost_base_cents | eur if p.cost_base_cents is not none else '' }}</td>
+          <td>
+            {%- if p.unrealized_base_cents is not none -%}
+              <span class="{{ 'income' if p.unrealized_base_cents >= 0 else 'delta bad' }}">{{ p.unrealized_base_cents | eur(True) }}</span>
+              {%- if p.cost_base_cents %}<div class="muted small">{{ '%+.1f' | format(p.unrealized_base_cents / p.cost_base_cents * 100) }}%</div>{% endif -%}
+            {%- endif -%}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}<p class="empty">No open positions in the latest statement.</p>{% endif %}
+</section>
+{% endfor %}
+{% endblock %}

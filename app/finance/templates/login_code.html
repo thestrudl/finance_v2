@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Enter code{% endblock %}
+{% block content %}
+<section class="login card">
+  <p class="eyebrow"><span class="dot"></span>Household finance</p>
+  <h1>Check your email</h1>
+  <p class="muted">If <strong>{{ email }}</strong> has access, a 6-digit code is on its way. It expires in 15 minutes.</p>
+  <form method="post">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <label>Code
+      <input name="code" class="code-input" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 ]*"
+             maxlength="7" required autofocus>
+    </label>
+    <button type="submit" class="primary">Log in</button>
+  </form>
+  <p class="small muted">You can also tap the link in the email.
+    <a href="{{ url_for('auth.login') }}">Use a different address or send a new code</a>.</p>
+</section>
+{% endblock %}

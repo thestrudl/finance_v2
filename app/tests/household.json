@@ -1,0 +1,207 @@
+{
+  "categories": [
+    {
+      "key": "sunny",
+      "label": "Sunny",
+      "group": "business",
+      "notes": "bike rental business"
+    },
+    {
+      "key": "mellie",
+      "label": "Mellie",
+      "group": "business",
+      "notes": "a side business"
+    },
+    {
+      "key": "vitech",
+      "label": "ViTech",
+      "group": "business",
+      "notes": "a side business"
+    },
+    {
+      "key": "padalci",
+      "label": "Padalci",
+      "group": "business",
+      "notes": "a side business"
+    },
+    {
+      "key": "food",
+      "label": "Food",
+      "group": "living",
+      "notes": "personal food and groceries"
+    },
+    {
+      "key": "gas",
+      "label": "Gas",
+      "group": "living",
+      "notes": "fuel for vehicles"
+    },
+    {
+      "key": "car",
+      "label": "Car",
+      "group": "living",
+      "notes": "car maintenance and repairs"
+    },
+    {
+      "key": "darilo",
+      "label": "Darilo",
+      "group": "living",
+      "notes": "gifts for people"
+    },
+    {
+      "key": "drinks",
+      "label": "Drinks",
+      "group": "living",
+      "notes": "social drinks/coffees"
+    },
+    {
+      "key": "placa",
+      "label": "Placa",
+      "group": "living",
+      "notes": "salary"
+    },
+    {
+      "key": "tech",
+      "label": "Tech",
+      "group": "living",
+      "notes": "personal technology purchases (subscriptions, gadgets, electronics)"
+    },
+    {
+      "key": "sw",
+      "label": "SW",
+      "group": "living",
+      "notes": "software subscriptions (iCloud etc.)"
+    },
+    {
+      "key": "other",
+      "label": "Other",
+      "group": "living",
+      "notes": "miscellaneous expenses (gifts, sundries, one-off items)"
+    },
+    {
+      "key": "insurance",
+      "label": "Insurance",
+      "group": "living",
+      "notes": "insurance premiums"
+    },
+    {
+      "key": "tel",
+      "label": "Tel",
+      "group": "living",
+      "notes": "phone/mobile bills"
+    },
+    {
+      "key": "clothing",
+      "label": "Clothing",
+      "group": "living",
+      "notes": "clothing and apparel"
+    },
+    {
+      "key": "vacation",
+      "label": "Vacation",
+      "group": "living",
+      "notes": ""
+    },
+    {
+      "key": "lekarna",
+      "label": "Lekarna",
+      "group": "living",
+      "notes": ""
+    },
+    {
+      "key": "frizeraj",
+      "label": "Frizeraj",
+      "group": "living",
+      "notes": ""
+    },
+    {
+      "key": "kayak",
+      "label": "Kayak",
+      "group": "living",
+      "notes": ""
+    },
+    {
+      "key": "varcevanje",
+      "label": "Varcevanje",
+      "group": "savings",
+      "notes": "savings/investment fund contributions"
+    },
+    {
+      "key": "poroka",
+      "label": "Poroka",
+      "group": "project",
+      "notes": "wedding-related expenses"
+    },
+    {
+      "key": "hisa",
+      "label": "Hisa",
+      "group": "project",
+      "notes": "house: purchase, renovation, loan repayments"
+    },
+    {
+      "key": "dohodnina",
+      "label": "Dohodnina",
+      "group": "living",
+      "notes": "income-tax refunds"
+    },
+    {
+      "key": "zdravje",
+      "label": "Zdravje",
+      "group": "living",
+      "notes": "health: pharmacy, medicines, dentist, glasses"
+    },
+    {
+      "key": "firma",
+      "label": "Firma",
+      "group": "business",
+      "notes": "s.p. costs"
+    },
+    {
+      "key": "app",
+      "label": "App",
+      "group": "business",
+      "notes": "apartment rental: guests, extra-child fees, furnishing"
+    }
+  ],
+  "aliases": {
+    "darila": "darilo",
+    "darilca": "darilo",
+    "gift": "darilo",
+    "clothes": "clothing",
+    "clotes": "clothing",
+    "cunje": "clothing",
+    "drink": "drinks",
+    "othr": "other",
+    "pther": "other",
+    "others": "other",
+    "poroko": "poroka",
+    "sunnyside": "sunny",
+    "farmacija": "lekarna",
+    "frizer": "frizeraj",
+    "zavarovanje": "insurance",
+    "kajak": "kayak",
+    "dopust": "vacation"
+  },
+  "merges": {
+    "salary": "placa",
+    "tax": "dohodnina",
+    "taxreturn": "dohodnina",
+    "paletaas": "paleta",
+    "klavirsp": "klavir",
+    "apt": "app",
+    "padalstvo": "padalci",
+    "postnina": "posta",
+    "travel": "transport",
+    "hofer": "food",
+    "med": "food",
+    "vecerja": "food",
+    "razno": "other",
+    "neumnosti": "other",
+    "lekarna": "zdravje",
+    "zdravila": "zdravje",
+    "zdravstvo": "zdravje",
+    "zobar": "zdravje",
+    "ocala": "zdravje",
+    "holiday": "vacation"
+  }
+}

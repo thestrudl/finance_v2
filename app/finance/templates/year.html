@@ -1,0 +1,274 @@
+{% extends "base.html" %}
+{% from "_macros.html" import delta, scope_toggle with context %}
+{% block title %}{{ year }}{% endblock %}
+{% block eyebrow %}Overview · year{% endblock %}
+
+{% macro matrix(rows, totals, kind) %}
+<div class="table-wrap">
+  <table class="matrix">
+    <thead>
+      <tr><th>Category</th>{% for m in month_names %}<th>{{ m }}</th>{% endfor %}<th>Total</th><th>Avg/mo</th></tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <th scope="row"><a href="{{ url_for('dashboard.category_view', key=row.key) }}">{{ row.label }}</a></th>
+        {% for value in row.months %}
+          <td class="heat-{{ row.heat[loop.index0] }}{% if value < 0 %} negative{% endif %}"
+              title="{{ row.label }}, {{ month_names[loop.index0] }} {{ year }}: {{ value | eur }}">
+            {%- if value %}{{ '%.0f' | format(value / 100) }}{% endif -%}
+          </td>
+        {% endfor %}
+        <td class="total">{{ '%.0f' | format(row.total / 100) }}</td>
+        <td class="muted">{{ '%.0f' | format(row.total / months_elapsed / 100) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr>
+        <th scope="row">All {{ kind }}</th>
+        {% for value in totals %}<td>{% if value %}{{ '%.0f' | format(value / 100) }}{% endif %}</td>{% endfor %}
+        <td class="total">{{ '%.0f' | format((totals | sum) / 100) }}</td>
+        <td>{{ '%.0f' | format((totals | sum) / months_elapsed / 100) }}</td>
+      </tr>
+    </tfoot>
+  </table>
+</div>
+{% endmacro %}
+
+{% macro group_table(groups_by_month, names) %}
+<div class="table-wrap">
+  <table class="num">
+    <thead><tr><th>Month</th>{% for grp in groups_by_month %}<th>{{ names[grp] }}</th>{% endfor %}<th>Total</th></tr></thead>
+    <tbody>
+      {% for m in range(months_elapsed) %}
+      <tr><td>{{ month_names[m] }}</td>
+        {% set ns = namespace(total=0) %}
+        {% for grp, values in groups_by_month.items() %}{% set ns.total = ns.total + values[m] %}<td>{{ values[m] | eur }}</td>{% endfor %}
+        <td><strong>{{ ns.total | eur }}</strong></td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endmacro %}
+
+{% macro changes_rows(rows, kind, good_when_up, top) %}
+<div class="table-wrap">
+  <table class="breakdown">
+    <thead><tr><th>Category</th><th class="r">{{ year }}</th>{% if previous %}<th class="r">{{ year - 1 }}</th><th class="r">Change</th>{% endif %}</tr></thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td><a href="{{ url_for('dashboard.category_view', key=row.key) }}">{{ row.label }}</a>
+          {% if row.grp != 'living' %}<span class="badge">{{ row.grp }}</span>{% endif %}</td>
+        <td class="r bar-cell">
+          <span class="bar bar-{{ kind }}" style="width: {{ ((row.total | abs) / (top or 1) * 100) | round(1) }}%"></span>
+          <span class="amount">{{ row.total | eur }}</span>
+        </td>
+        {% if previous %}
+        <td class="r muted">{{ row.prev | eur }}</td>
+        <td class="r">{{ delta(row.total, row.prev, good_when_up) }}</td>
+        {% endif %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endmacro %}
+
+{# The 12 biggest; the rest, and categories only used last year, behind "Show all". #}
+{% macro changes_table(rows, kind, good_when_up) %}
+{% set top = (rows | map(attribute='total') | map('abs') | max) if rows else 1 %}
+{% set this_year = rows | selectattr('total') | list %}
+{% set rest = this_year[12:] + (rows | rejectattr('total') | list) %}
+{{ changes_rows(this_year[:12], kind, good_when_up, top) }}
+{% if rest %}
+<details>
+  <summary>Show all {{ rows | length }} categories</summary>
+  {{ changes_rows(rest, kind, good_when_up, top) }}
+</details>
+{% endif %}
+{% endmacro %}
+
+{% block content %}
+<div class="toolbar">
+  <div class="month-nav">
+    {% if year > first_year %}<a class="btn" href="{{ url_for('dashboard.year_view', year=year - 1, scope=scope) }}" aria-label="Previous year">‹</a>{% endif %}
+    <h1>{{ year }}</h1>
+    {% if year < this_year %}<a class="btn" href="{{ url_for('dashboard.year_view', year=year + 1, scope=scope) }}" aria-label="Next year">›</a>{% endif %}
+  </div>
+  {{ scope_toggle(scope, 'dashboard.year_view') }}
+</div>
+
+{% set vs = 'vs ' ~ (year - 1) ~ (' to ' ~ through if is_current else '') %}
+{% if is_current %}<p class="muted note">{{ year }} up to {{ through }}, compared with {{ year - 1 }} up to the same date.</p>{% endif %}
+{% if previous and first_month and first_month[:4] | int == year - 1 and first_month[5:] != '01' %}
+<p class="muted note">The data for {{ year - 1 }} starts in {{ first_month | month_name }}, so comparisons with {{ year - 1 }} cover a shorter stretch.</p>
+{% endif %}
+
+<section class="tiles">
+  <div class="tile">
+    <span class="tile-label">Income</span>
+    <span class="tile-value">{{ current.income | eur }}</span>
+    {% if previous %}{{ delta(current.income, previous.income, True, vs) }}{% endif %}
+  </div>
+  <div class="tile">
+    <span class="tile-label">Spending</span>
+    <span class="tile-value">{{ current.expense | eur }}</span>
+    {% if previous %}{{ delta(current.expense, previous.expense, False, vs) }}{% endif %}
+  </div>
+  <div class="tile">
+    <span class="tile-label">Net</span>
+    <span class="tile-value">{{ current.net | eur(True) }}</span>
+    <span class="delta">{% if current.savings_rate is not none %}{{ '%.0f' | format(current.savings_rate * 100) }}% of income kept{% endif %}</span>
+    {% if previous %}<span class="delta">{{ previous.net | eur(True) }} in {{ year - 1 }}{{ ' same period' if is_current }}</span>{% endif %}
+  </div>
+  <div class="tile" title="Median month of everyday (Living group) spending">
+    <span class="tile-label">Living costs, typical month</span>
+    <span class="tile-value">{{ typical_living | eur }}</span>
+    {% if typical_living_prev is not none %}{{ delta(typical_living, typical_living_prev, False, 'vs ' ~ (year - 1)) }}{% endif %}
+  </div>
+  <div class="tile" title="Monthly repeats over a whole year">
+    <span class="tile-label">Recurring per year</span>
+    <span class="tile-value">{{ (recurring.expense * 12) | eur }}</span>
+    <span class="delta">{{ recurring.expense | eur }} a month · <a href="{{ url_for('dashboard.repeats_view') }}">repeats</a></span>
+  </div>
+</section>
+
+<section class="card">
+  <h2>Income and spending by month</h2>
+  <div class="chart"><canvas data-chart="monthly-data" role="img" aria-label="Income and spending per month; the table below has the numbers"></canvas></div>
+  <script type="application/json" id="monthly-data">{{ charts.monthly | tojson }}</script>
+  <details>
+    <summary>Show as table</summary>
+    <div class="table-wrap">
+      <table class="num">
+        <thead><tr><th>Month</th><th>Income</th><th>Spending</th><th>Living</th><th>Net</th><th>Kept</th></tr></thead>
+        <tbody>
+          {% for p in monthly %}
+          <tr>
+            <td><a href="{{ url_for('dashboard.overview', month=p.month, scope=scope) }}">{{ month_names[loop.index0] }}</a></td>
+            <td>{{ p.income | eur }}</td><td>{{ p.expense | eur }}</td><td>{{ p.living | eur }}</td>
+            <td>{{ p.net | eur(True) }}</td>
+            <td>{% if p.income > 0 %}{{ '%.0f' | format(p.net / p.income * 100) }}%{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </details>
+</section>
+
+<div class="grid-2">
+  <section class="card">
+    <h2>Running net through the year</h2>
+    <p class="muted note">Income minus spending, added up month by month{{ ', against ' ~ (year - 1) if charts.running.series | length > 1 }}.</p>
+    <div class="chart"><canvas data-chart="running-data" role="img" aria-label="Cumulative net per month; the table below has the numbers"></canvas></div>
+    <script type="application/json" id="running-data">{{ charts.running | tojson }}</script>
+    <details>
+      <summary>Show as table</summary>
+      <div class="table-wrap">
+        <table class="num">
+          <thead><tr><th>End of</th>{% for s in charts.running.series %}<th>{{ s.name }}</th>{% endfor %}</tr></thead>
+          <tbody>
+            {% for m in range(12) %}
+            <tr><td>{{ month_names[m] }}</td>{% for s in charts.running.series %}<td>{{ s['values'][m] | eur(True) if s['values'][m] is not none else '' }}</td>{% endfor %}</tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </details>
+  </section>
+
+  <section class="card">
+    <h2>Biggest changes vs {{ year - 1 }}</h2>
+    {% if previous %}
+    <p class="muted note">Spending categories that moved most against {{ year - 1 }}{{ ' up to the same date' if is_current }}.</p>
+    <div class="movers">
+      <div>
+        <h3>Up</h3>
+        <ul class="plain">
+          {% for row in increases %}<li><a href="{{ url_for('dashboard.category_view', key=row.key) }}">{{ row.label }}</a>
+            <span class="delta bad">▲ {{ row.change | eur }}</span><br><span class="muted small">{{ row.prev | eur }} → {{ row.total | eur }}</span></li>
+          {% else %}<li class="empty">Nothing up by €100 or more.</li>{% endfor %}
+        </ul>
+      </div>
+      <div>
+        <h3>Down</h3>
+        <ul class="plain">
+          {% for row in decreases %}<li><a href="{{ url_for('dashboard.category_view', key=row.key) }}">{{ row.label }}</a>
+            <span class="delta good">▼ {{ (-row.change) | eur }}</span><br><span class="muted small">{{ row.prev | eur }} → {{ row.total | eur }}</span></li>
+          {% else %}<li class="empty">Nothing down by €100 or more.</li>{% endfor %}
+        </ul>
+      </div>
+    </div>
+    {% else %}<p class="empty">No data for {{ year - 1 }} to compare with.</p>{% endif %}
+  </section>
+</div>
+
+<div class="grid-2">
+  <section class="card">
+    <h2>Where the money went</h2>
+    <p class="muted note">Spending per month by group. Groups are set on the <a href="{{ url_for('dashboard.categories_view') }}">Categories</a> page.</p>
+    <div class="chart"><canvas data-chart="spending-groups-data" role="img" aria-label="Spending per month split by group; the table below has the numbers"></canvas></div>
+    <script type="application/json" id="spending-groups-data">{{ charts.spending_groups | tojson }}</script>
+    <details><summary>Show as table</summary>{{ group_table(spending_groups, groups) }}</details>
+  </section>
+
+  <section class="card">
+    <h2>Where the money came from</h2>
+    <p class="muted note">Income per month by group: salaries and other, the businesses, and project income such as wedding gifts.</p>
+    <div class="chart"><canvas data-chart="income-groups-data" role="img" aria-label="Income per month split by group; the table below has the numbers"></canvas></div>
+    <script type="application/json" id="income-groups-data">{{ charts.income_groups | tojson }}</script>
+    <details><summary>Show as table</summary>{{ group_table(income_groups, dict(groups, living='Salary & other')) }}</details>
+  </section>
+</div>
+
+<div class="grid-2">
+  <section class="card">
+    <h2>Spending by category</h2>
+    {% if expense_changes %}{{ changes_table(expense_changes, 'expense', False) }}{% else %}<p class="empty">No spending in {{ year }}.</p>{% endif %}
+  </section>
+  <section class="card">
+    <h2>Income by category</h2>
+    {% if income_changes %}{{ changes_table(income_changes, 'income', True) }}{% else %}<p class="empty">No income in {{ year }}.</p>{% endif %}
+  </section>
+</div>
+
+<section class="card">
+  <h2>Businesses, net per month</h2>
+  {% if business %}
+  <p class="muted note">Income minus costs for each category in the Business group. Seasonal businesses compare best with the same months last year.</p>
+  <div class="table-wrap">
+    <table class="matrix business">
+      <thead><tr><th>Business</th>{% for m in month_names %}<th>{{ m }}</th>{% endfor %}<th>{{ year }}</th><th>{{ year - 1 }}{{ ' (full year)' if is_current }}</th></tr></thead>
+      <tbody>
+        {% for b in business %}
+        <tr>
+          <th scope="row"><a href="{{ url_for('dashboard.business_view', key=b.key, year=year) }}">{{ b.label }}</a></th>
+          {% for value in b.net %}
+            <td class="{{ 'pos' if value > 0 else ('neg' if value < 0 else '') }}" title="{{ b.label }}, {{ month_names[loop.index0] }}: {{ value | eur(True) }}">
+              {%- if value %}{{ '%+.0f' | format(value / 100) }}{% endif -%}
+            </td>
+          {% endfor %}
+          <td class="total">{{ b.total | eur(True) }}</td>
+          <td class="muted">{{ b.prev_net | eur(True) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}<p class="empty">No categories in the Business group have entries in {{ year }} or {{ year - 1 }}.</p>{% endif %}
+</section>
+
+<section class="card">
+  <h2>Spending by category and month (€)</h2>
+  <p class="muted note">Each row is shaded against its own highest month, so you can see when a category peaks. Averages use {{ months_elapsed }} month{{ 's' if months_elapsed != 1 }}.</p>
+  {% if expenses %}{{ matrix(expenses, expense_totals, 'spending') }}{% else %}<p class="empty">No spending in {{ year }}.</p>{% endif %}
+</section>
+
+<section class="card">
+  <h2>Income by category and month (€)</h2>
+  {% if income %}{{ matrix(income, income_totals, 'income') }}{% else %}<p class="empty">No income in {{ year }}.</p>{% endif %}
+</section>
+{% endblock %}

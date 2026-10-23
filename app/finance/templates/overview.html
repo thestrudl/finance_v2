@@ -1,0 +1,251 @@
+{% extends "base.html" %}
+{% from "_macros.html" import delta, scope_toggle with context %}
+{% block title %}{{ ym | month_name }}{% endblock %}
+{% block eyebrow %}Overview · month{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <div class="month-nav">
+    <a class="btn" href="{{ url_for('dashboard.overview', month=prev_ym, scope=scope) }}" aria-label="Previous month">‹</a>
+    <h1>{{ ym | month_name }}</h1>
+    {% if next_ym %}<a class="btn" href="{{ url_for('dashboard.overview', month=next_ym, scope=scope) }}" aria-label="Next month">›</a>{% endif %}
+    <form method="get" class="inline">
+      <input type="hidden" name="scope" value="{{ scope }}">
+      <input type="month" name="month" value="{{ ym }}" {% if first_ym %}min="{{ first_ym }}"{% endif %} data-autosubmit aria-label="Pick a month">
+    </form>
+  </div>
+  {{ scope_toggle(scope, 'dashboard.overview') }}
+</div>
+
+{% if is_current %}<p class="muted note">Month in progress: day {{ day_of_month }} of {{ days_in_month }}. Totals compare against full months.</p>{% endif %}
+
+{% set ly_label = 'vs ' ~ (last_year_ym | month_name(True)) %}
+<section class="tiles">
+  <div class="tile" title="Typical = median of the 12 months before">
+    <span class="tile-label">Income</span>
+    <span class="tile-value">{{ current.income | eur }}</span>
+    {{ delta(current.income, typical.income, True, 'vs typical month') }}
+    {% if last_year %}{{ delta(current.income, last_year.income, True, ly_label) }}{% endif %}
+  </div>
+  <div class="tile" title="Typical = median of the 12 months before">
+    <span class="tile-label">Spending</span>
+    <span class="tile-value">{{ current.expense | eur }}</span>
+    {{ delta(current.expense, typical.expense, False, 'vs typical month') }}
+    {% if last_year %}{{ delta(current.expense, last_year.expense, False, ly_label) }}{% endif %}
+  </div>
+  <div class="tile">
+    <span class="tile-label">Net</span>
+    <span class="tile-value">{{ current.net | eur(True) }}</span>
+    <span class="delta">{% if current.savings_rate is not none %}{{ '%.0f' | format(current.savings_rate * 100) }}% of income kept{% else %}no income yet{% endif %}</span>
+    {% if last_year %}<span class="delta">{{ last_year.net | eur(True) }} in {{ last_year_ym | month_name(True) }}</span>{% endif %}
+  </div>
+  <div class="tile" title="Spending in the Living group: everyday costs, without business, project or savings">
+    <span class="tile-label"><a href="{{ url_for('dashboard.living_view', month=ym) }}">Living costs</a></span>
+    <span class="tile-value">{{ current.living | eur }}</span>
+    {% if pace.projected is not none %}
+      <span class="delta">on pace for <strong>{{ pace.projected | eur }}</strong></span>
+    {% endif %}
+    {% if typical.living is defined %}{{ delta(pace.projected if pace.projected is not none else current.living, typical.living, False, 'vs typical month') }}{% endif %}
+  </div>
+  <div class="tile" title="Monthly repeats: logged automatically every month">
+    <span class="tile-label">Recurring each month</span>
+    <span class="tile-value">{{ recurring.expense | eur }}</span>
+    <span class="delta">{{ recurring.n }} repeat{{ 's' if recurring.n != 1 }}{% if recurring.income %} · {{ recurring.income | eur }} coming in{% endif %} · <a href="{{ url_for('dashboard.repeats_view') }}">manage</a></span>
+  </div>
+</section>
+
+<section class="card">
+  <h2>Living costs through the month</h2>
+  <p class="muted note">
+    Running total of everyday spending by day{% if pace.typical %}, against the typical month (the median of the 12 before){% endif %}.
+    {%- if pace.projected is not none %} At the usual pace for the rest of the month, it ends near {{ pace.projected | eur }}.{% endif %}
+  </p>
+  <div class="chart"><canvas data-chart="pace-data" role="img" aria-label="Cumulative living costs by day of the month; the table below has the numbers"></canvas></div>
+  <script type="application/json" id="pace-data">{{ pace_chart | tojson }}</script>
+  <details>
+    <summary>Show as table</summary>
+    <div class="table-wrap">
+      <table class="num">
+        <thead><tr><th>Day</th><th>This month</th>{% if pace.typical %}<th>Typical month</th>{% endif %}</tr></thead>
+        <tbody>
+          {% for day in range(days_in_month) %}
+          <tr><td>{{ day + 1 }}</td>
+            <td>{{ pace.current[day] | eur if (not is_current or day < day_of_month) else '' }}</td>
+            {% if pace.typical %}<td>{{ pace.typical[day] | eur }}</td>{% endif %}</tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </details>
+</section>
+
+<section class="card">
+  <h2>Income and spending, last 12 months</h2>
+  <div class="chart"><canvas data-chart="trend-data" role="img" aria-label="Monthly income and spending for the last 12 months; the table below has the numbers"></canvas></div>
+  <script type="application/json" id="trend-data">{{ {
+    "labels": trend | map(attribute='month') | map('month_name', True) | list,
+    "series": [
+      {"name": "Income", "values": trend | map(attribute='income') | list, "color": "--s1"},
+      {"name": "Spending", "values": trend | map(attribute='expense') | list, "color": "--s2"}
+    ],
+    "type": "bar",
+    "net": true
+  } | tojson }}</script>
+  <details>
+    <summary>Show as table</summary>
+    <div class="table-wrap">
+      <table class="num">
+        <thead><tr><th>Month</th><th>Income</th><th>Spending</th><th>Living</th><th>Net</th></tr></thead>
+        <tbody>
+          {% for p in trend | reverse %}
+          <tr>
+            <td><a href="{{ url_for('dashboard.overview', month=p.month, scope=scope) }}">{{ p.month | month_name(True) }}</a></td>
+            <td>{{ p.income | eur }}</td><td>{{ p.expense | eur }}</td><td>{{ p.living | eur }}</td><td>{{ p.net | eur(True) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </details>
+</section>
+
+<div class="grid-2">
+  <section class="card">
+    <h2>Spending by category</h2>
+    {% if expenses %}
+    <div class="table-wrap">
+      <table class="breakdown">
+        <thead><tr><th>Category</th><th class="r">This month</th><th class="r">12-mo avg</th><th class="r">Change</th></tr></thead>
+        <tbody>
+          {% for row in expenses %}
+          <tr>
+            <td><a href="{{ url_for('dashboard.category_view', key=row.key) }}">{{ row.label }}</a>
+              {% if row.grp != 'living' %}<span class="badge badge-{{ row.grp }}">{{ row.grp }}</span>{% endif %}</td>
+            <td class="r bar-cell">
+              <span class="bar bar-expense" style="width: {{ (row.total | abs / expense_max * 100) | round(1) }}%"></span>
+              <span class="amount">{{ row.total | eur }}</span>
+            </td>
+            <td class="r muted">{{ row.avg | eur }}</td>
+            <td class="r">{{ delta(row.total, row.avg, False) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}<p class="empty">No expenses this month.</p>{% endif %}
+  </section>
+
+  <section class="card">
+    <h2>Income by category</h2>
+    {% if income %}
+    <div class="table-wrap">
+      <table class="breakdown">
+        <thead><tr><th>Category</th><th class="r">This month</th><th class="r">12-mo avg</th><th class="r">Change</th></tr></thead>
+        <tbody>
+          {% for row in income %}
+          <tr>
+            <td><a href="{{ url_for('dashboard.category_view', key=row.key) }}">{{ row.label }}</a></td>
+            <td class="r bar-cell">
+              <span class="bar bar-income" style="width: {{ (row.total | abs / income_max * 100) | round(1) }}%"></span>
+              <span class="amount">{{ row.total | eur }}</span>
+            </td>
+            <td class="r muted">{{ row.avg | eur }}</td>
+            <td class="r">{{ delta(row.total, row.avg, True) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}<p class="empty">No income this month.</p>{% endif %}
+  </section>
+</div>
+
+<div class="grid-2">
+  <section class="card">
+    <h2>Budgets</h2>
+    {% if budgets %}
+    <ul class="budgets">
+      {% for b in budgets %}
+      <li>
+        <div class="budget-head">
+          <a href="{{ url_for('dashboard.category_view', key=b.key) }}">{{ b.label }}</a>
+          <span class="muted">{{ 'this month' if b.budget_period == 'month' else 'this year' }}</span>
+          <span class="status status-{{ b.status }}">
+            {%- if b.status == 'over' %}✕ Over budget{% elif b.status == 'ahead' %}! Ahead of pace{% else %}✓ On track{% endif -%}
+          </span>
+        </div>
+        <div class="meter" title="Marker: share of the {{ 'month' if b.budget_period == 'month' else 'year' }} that has passed">
+          <span class="meter-fill status-bg-{{ b.status }}" style="width: {{ ([b.share, 1] | min * 100) | round(1) }}%"></span>
+          <span class="meter-pace" style="left: {{ (b.pace * 100) | round(1) }}%"></span>
+        </div>
+        <div class="budget-foot muted">{{ b.spent | eur }} of {{ b.budget_cents | eur }} ({{ '%.0f' | format(b.share * 100) }}%)</div>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="empty">No budgets set. Add them on the <a href="{{ url_for('dashboard.categories_view') }}">Categories</a> page.</p>{% endif %}
+  </section>
+
+  <section class="card">
+    <h2>Businesses, {{ ym[:4] }}</h2>
+    {% if business %}
+    <div class="table-wrap">
+      <table class="num">
+        <thead><tr><th>Business</th><th>{{ ym | month_name(True) }} net</th><th>Year income</th><th>Year costs</th><th>Year net</th></tr></thead>
+        <tbody>
+          {% for row in business %}
+          <tr>
+            <td><a href="{{ url_for('dashboard.business_view', key=row.key, year=ym[:4]) }}">{{ row.label }}</a></td>
+            <td>{{ row.month_net | eur(True) }}</td>
+            <td>{{ row.income | eur }}</td>
+            <td>{{ row.expense | eur }}</td>
+            <td><strong>{{ row.net | eur(True) }}</strong></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}<p class="empty">No categories in the Business group have entries this year.</p>{% endif %}
+  </section>
+</div>
+
+<div class="grid-2">
+  <section class="card">
+    <h2>Unusual expenses</h2>
+    <p class="muted note">At least 3× the category's typical (median) expense over the past year.</p>
+    {% if unusual %}
+    <div class="table-wrap">
+      <table>
+        <tbody>
+          {% for row in unusual %}
+          <tr>
+            <td class="muted nowrap">{{ row.occurred_at[8:10] }}.{{ row.occurred_at[5:7] }}.</td>
+            <td><a href="{{ url_for('dashboard.category_view', key=row.category) }}">{{ row.label }}</a><br><span class="muted small">{{ row.comment }}</span></td>
+            <td class="r nowrap"><strong>{{ row.amount_cents | eur }}</strong><br><span class="muted small">{{ '%.1f' | format(row.ratio) }}× typical {{ row.median | int | eur }}</span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}<p class="empty">Nothing out of the ordinary.</p>{% endif %}
+  </section>
+
+  <section class="card">
+    <h2>Largest expenses</h2>
+    {% if largest %}
+    <div class="table-wrap">
+      <table>
+        <tbody>
+          {% for row in largest %}
+          <tr>
+            <td class="muted nowrap">{{ row.occurred_at[8:10] }}.{{ row.occurred_at[5:7] }}.</td>
+            <td><a href="{{ url_for('dashboard.category_view', key=row.category) }}">{{ row.label }}</a><br><span class="muted small">{{ row.comment }}</span></td>
+            <td class="r nowrap"><strong>{{ row.amount_cents | eur }}</strong></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p><a href="{{ url_for('dashboard.transactions', month=ym) }}">All transactions in {{ ym | month_name }} →</a></p>
+    {% else %}<p class="empty">No expenses this month.</p>{% endif %}
+  </section>
+</div>
+{% endblock %}

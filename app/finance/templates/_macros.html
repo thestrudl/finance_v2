@@ -1,0 +1,44 @@
+{# Change against a baseline. Arrow + percentage carry the meaning; colour only reinforces it. #}
+{% macro delta(value, base, good_when_up=True, label='') -%}
+  {%- if base and base != 0 -%}
+    {%- set pct = (value - base) / (base | abs) * 100 -%}
+    {%- if pct | abs < 3 -%}
+      <span class="delta">≈ same{{ ' ' ~ label if label }}</span>
+    {%- else -%}
+      {%- set up = pct > 0 -%}
+      <span class="delta {{ 'good' if up == good_when_up else 'bad' }}">{{ '▲' if up else '▼' }} {{ '%.0f' | format(pct | abs) }}%{{ ' ' ~ label if label }}</span>
+    {%- endif -%}
+  {%- else -%}
+    <span class="delta">–</span>
+  {%- endif -%}
+{%- endmacro %}
+
+{% macro scope_toggle(scope, endpoint) -%}
+  {%- set args = dict(request.args) -%}
+  <div class="segmented" role="group" aria-label="Which spending to include">
+    {%- set _ = args.update(scope='all') %}
+    <a href="{{ url_for(endpoint, **args) }}" {% if scope == 'all' %}aria-current="true"{% endif %}>Everything</a>
+    {%- set _ = args.update(scope='core') %}
+    <a href="{{ url_for(endpoint, **args) }}" {% if scope == 'core' %}aria-current="true"{% endif %}
+       title="Leaves out the Project and Savings groups (house, wedding, savings transfers)">Without projects &amp; savings</a>
+  </div>
+{%- endmacro %}
+
+{% macro entry_fields(all_categories, values=None, default_time='') %}
+  <label>Type
+    <select name="type">
+      <option value="expense" {% if values and not values.is_income %}selected{% endif %}>Expense</option>
+      <option value="income" {% if values and values.is_income %}selected{% endif %}>Income</option>
+    </select>
+  </label>
+  <label>Category
+    <input name="category" list="category-list" value="{{ values.category_raw if values else '' }}" required autocomplete="off">
+  </label>
+  <label>Amount (€) <input name="amount" inputmode="decimal" value="{{ '%.2f' | format(values.amount_cents / 100) if values else '' }}" required></label>
+  <label>When <input type="datetime-local" name="occurred_at" step="1" value="{{ values.occurred_at.replace(' ', 'T') if values else default_time }}" required></label>
+  <label class="grow">Comment <input name="comment" value="{{ values.comment if values else '' }}"></label>
+  <label class="check" title="Paid or received outside our accounts, like a gift or loan paid straight to the seller: it won't move the bank & cash estimate">
+    <input type="checkbox" name="off_balance" value="1" {% if values and values.off_balance %}checked{% endif %}> Outside our accounts
+  </label>
+  <datalist id="category-list">{% for c in all_categories %}<option value="{{ c.key }}">{{ c.label }}</option>{% endfor %}</datalist>
+{% endmacro %}

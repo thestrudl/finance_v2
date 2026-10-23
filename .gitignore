@@ -1,0 +1,17 @@
+.env
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Private: household data, the spreadsheet export and the old script (it contains live API keys).
+app/household.json
+import/
+*.csv
+*.ods
+*.db
+*.db-wal
+*.db-shm
+appscript.js
+
+# Personal deployment notes
+*.local.md

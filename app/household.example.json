@@ -1,0 +1,43 @@
+{
+  "_comment": "Copy to household.json (git-ignored) and adapt. Categories: key, label, group (living|business|project|savings), notes. Aliases: other spellings of a category. Merges: applied once to existing data (migration 4).",
+  "categories": [
+    {
+      "key": "rental",
+      "label": "Rental",
+      "group": "business",
+      "notes": "a side business: income and costs"
+    },
+    {
+      "key": "salary",
+      "label": "Salary",
+      "group": "living",
+      "notes": "monthly pay"
+    },
+    {
+      "key": "house",
+      "label": "House",
+      "group": "project",
+      "notes": "purchase, renovation, loan repayments"
+    },
+    {
+      "key": "savings",
+      "label": "Savings",
+      "group": "savings",
+      "notes": "transfers to savings and investments"
+    },
+    {
+      "key": "health",
+      "label": "Health",
+      "group": "living",
+      "notes": "pharmacy, dentist, glasses"
+    }
+  ],
+  "aliases": {
+    "pharmacy": "health",
+    "dentist": "health",
+    "wage": "salary"
+  },
+  "merges": {
+    "payroll": "salary"
+  }
+}

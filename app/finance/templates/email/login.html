@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<body style="margin:0;padding:24px;background:#fafaf9;font-family:Inter,-apple-system,'Segoe UI',Roboto,sans-serif;color:#1c1917">
+  <div style="max-width:420px;margin:0 auto;background:#ffffff;border:1px solid #e7e5e4;padding:28px">
+    <p style="margin:0 0 18px;font-family:'IBM Plex Mono',Consolas,monospace;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#78716c">
+      <span style="display:inline-block;width:5px;height:5px;border-radius:50%;background:#2563eb;vertical-align:middle;margin-right:8px"></span>Household finance
+    </p>
+    <p style="margin:0 0 16px">Hi {{ name }},</p>
+    <p style="margin:0 0 8px">Your login code for {{ site }}:</p>
+    <p style="margin:0 0 22px;font-family:'IBM Plex Mono',Consolas,monospace;font-size:32px;font-weight:600;letter-spacing:6px">{{ code }}</p>
+    <p style="margin:0 0 22px">
+      <a href="{{ link }}" style="display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;font-family:'IBM Plex Mono',Consolas,monospace;font-size:12px;letter-spacing:1px;text-transform:uppercase;padding:11px 20px">Log in on this device</a>
+    </p>
+    <p style="margin:0;color:#78716c;font-size:13px">The code and the link work once and expire in {{ minutes }} minutes. If you didn't ask to log in, ignore this email.</p>
+  </div>
+</body>
+</html>

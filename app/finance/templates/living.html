@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% from "_macros.html" import delta %}
+{% block title %}Living costs{% endblock %}
+{% block eyebrow %}Living costs{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <div class="month-nav">
+    <a class="btn" href="{{ url_for('dashboard.living_view', month=prev_ym) }}" aria-label="Previous month">‹</a>
+    <h1>{{ ym | month_name }}</h1>
+    {% if next_ym %}<a class="btn" href="{{ url_for('dashboard.living_view', month=next_ym) }}" aria-label="Next month">›</a>{% endif %}
+    <form method="get" class="inline">
+      <input type="month" name="month" value="{{ ym }}" {% if first_ym %}min="{{ first_ym }}"{% endif %} data-autosubmit aria-label="Pick a month">
+    </form>
+  </div>
+</div>
+<p class="muted note">
+  Everyday spending only: the categories in the Living group, like food, car, gas and clothing.
+  No businesses, house, wedding or savings. Groups are set on the <a href="{{ url_for('dashboard.categories_view') }}">Categories</a> page.
+</p>
+
+<section class="tiles">
+  <div class="tile">
+    <span class="tile-label">{{ ym | month_name(True) }}{{ ' so far' if is_current }}</span>
+    <span class="tile-value">{{ month_total | eur }}</span>
+    {% if pace.projected is not none %}<span class="delta">on pace for <strong>{{ pace.projected | eur }}</strong></span>{% endif %}
+    {% if typical is not none %}{{ delta(pace.projected if pace.projected is not none else month_total, typical, False, 'vs typical month') }}{% endif %}
+  </div>
+  <div class="tile" title="Median of the 12 months before">
+    <span class="tile-label">Typical month</span>
+    <span class="tile-value">{{ typical | eur if typical is not none else '–' }}</span>
+    <span class="delta">median of the 12 months before</span>
+  </div>
+  <div class="tile">
+    <span class="tile-label">Previous 12 months</span>
+    <span class="tile-value">{{ history_total | eur }}</span>
+    <span class="delta">{{ (history_total / history_months) | round | int | eur }} a month on average</span>
+    {% if before_total %}{{ delta(history_total, before_total, False, 'vs the 12 before') }}{% endif %}
+  </div>
+  <div class="tile">
+    <span class="tile-label">Per day</span>
+    <span class="tile-value">{{ (history_total / (history_months * 30.44)) | round | int | eur }}</span>
+    <span class="delta">over the previous {{ history_months }} month{{ 's' if history_months != 1 }}</span>
+  </div>
+</section>
+
+<section class="card">
+  <h2>Living costs per month, last 24 months</h2>
+  <div class="chart"><canvas data-chart="living-trend" role="img" aria-label="Living costs per month for 24 months; the table below has the numbers"></canvas></div>
+  <script type="application/json" id="living-trend">{{ trend_chart | tojson }}</script>
+  <details>
+    <summary>Show as table</summary>
+    <div class="table-wrap">
+      <table class="num">
+        <thead><tr><th>Month</th><th>Living costs</th></tr></thead>
+        <tbody>
+          {% for p in trend | reverse %}
+          <tr><td><a href="{{ url_for('dashboard.living_view', month=p.month) }}">{{ p.month | month_name(True) }}</a></td><td>{{ p.living | eur }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </details>
+</section>
+
+{% if multiples %}
+<section class="card">
+  <h2>Biggest categories, month by month</h2>
+  <p class="muted note">The six largest over the previous 12 months. Each chart has its own scale; the last bar is {{ ym | month_name(True) }}{{ ' so far' if is_current }}.</p>
+  <div class="multiples">
+    {% for m in multiples %}
+    <div class="multiple">
+      <div class="multiple-head">
+        <a href="{{ url_for('dashboard.category_view', key=m.key) }}"><strong>{{ m.label }}</strong></a>
+        <span class="muted small">{{ m.total | eur }} in 12 months</span>
+      </div>
+      <div class="muted small">typical month {{ m.median | eur }} · {{ ym | month_name(True) }} {{ m.this_month | eur }}</div>
+      <div class="chart small"><canvas data-chart="multiple-{{ loop.index }}" role="img" aria-label="{{ m.label }} per month; the table below has the numbers"></canvas></div>
+      <script type="application/json" id="multiple-{{ loop.index }}">{{ m.chart | tojson }}</script>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<section class="card">
+  <h2>All living categories</h2>
+  {% if table %}
+  <div class="table-wrap">
+    <table class="num">
+      <thead><tr><th>Category</th><th>Previous 12 months</th><th>Average month</th><th>Typical month</th><th>{{ ym | month_name(True) }}{{ ' so far' if is_current }}</th>{% if not is_current %}<th>vs average</th>{% endif %}<th>Budget</th></tr></thead>
+      <tbody>
+        {% for row in table %}
+        <tr>
+          <td><a href="{{ url_for('dashboard.category_view', key=row.key) }}">{{ row.label }}</a></td>
+          <td>{{ row.total | eur }}</td>
+          <td>{{ row.avg | eur }}</td>
+          <td class="muted">{{ row.median | eur }}</td>
+          <td><strong>{{ row.this_month | eur }}</strong></td>
+          {% if not is_current %}<td>{{ delta(row.this_month, row.avg, False) }}</td>{% endif %}
+          <td class="muted">{% if row.budget_cents %}{{ row.budget_cents | eur }} / {{ row.budget_period }}{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="muted small">Typical month is the median, which is often €0 for categories you don't spend on every month. The average spreads one-off purchases out.</p>
+  {% else %}<p class="empty">No living costs yet.</p>{% endif %}
+</section>
+{% endblock %}

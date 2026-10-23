@@ -1,0 +1,72 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# finance — household finance: Telegram bot webhook + insights portal.
+#
+#   https://$FINANCE_HOST/telegram/<TELEGRAM_WEBHOOK_PATH>   Telegram webhook
+#   https://$FINANCE_HOST/                                   dashboard (login)
+#
+# Data lives in the finance-data volume (SQLite + daily backups in /data/backups).
+#
+# Run (from this directory, with a filled-in .env beside this file):
+#   docker compose config          # parse check, changes nothing
+#   docker compose up -d --build
+#
+# Verify:
+#   curl -sI https://$FINANCE_HOST/healthz | head -1       # 200
+#   curl -sI https://$FINANCE_HOST/        | head -3       # 302 to /login
+#   docker compose exec finance flask webhook-info
+# ─────────────────────────────────────────────────────────────────────────────
+
+x-app: &app
+  build: ./app
+  image: finance-app:latest
+  restart: unless-stopped
+  # Secrets are not in the repository: copy .env.example to .env and fill it in.
+  env_file: .env
+  volumes:
+    - finance-data:/data
+
+services:
+  finance:
+    <<: *app
+    container_name: finance
+    networks:
+      - nginx-proxy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=nginx-proxy"
+
+      - "traefik.http.routers.finance.rule=Host(`${FINANCE_HOST}`)"
+      - "traefik.http.routers.finance.entrypoints=websecure"
+      - "traefik.http.routers.finance.tls=true"
+      - "traefik.http.routers.finance.tls.certresolver=letsencrypt"
+      - "traefik.http.services.finance.loadbalancer.server.port=8000"
+
+      - "traefik.http.routers.finance-http.rule=Host(`${FINANCE_HOST}`)"
+      - "traefik.http.routers.finance-http.entrypoints=web"
+      - "traefik.http.routers.finance-http.middlewares=finance-tls-redirect"
+      - "traefik.http.routers.finance-http.service=finance"
+
+      - "traefik.http.middlewares.finance-tls-redirect.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.finance-tls-redirect.redirectscheme.permanent=true"
+
+  # Repeat entries, daily backup, pruning. Same image, no network exposure
+  # needed beyond outbound calls to Telegram for error alerts.
+  finance-scheduler:
+    <<: *app
+    container_name: finance-scheduler
+    command: ["python", "-m", "finance.scheduler"]
+    depends_on:
+      finance:
+        condition: service_healthy
+
+volumes:
+  finance-data:
+
+networks:
+  nginx-proxy:
+    external: true

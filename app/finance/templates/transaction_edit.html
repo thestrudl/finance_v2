@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% from "_macros.html" import entry_fields %}
+{% block title %}Edit transaction{% endblock %}
+{% block eyebrow %}Data · transactions{% endblock %}
+{% block content %}
+<div class="toolbar"><h1>Edit transaction</h1></div>
+<section class="card">
+  <p class="muted small">Logged {{ row.created_at }} via {{ row.source }}{% if row.user_name %} by {{ row.user_name }}{% endif %}.</p>
+  <form method="post" class="filters">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    {{ entry_fields(all_categories, row) }}
+    <button type="submit" class="primary">Save</button>
+    <a href="{{ back }}">Cancel</a>
+  </form>
+</section>
+{% endblock %}

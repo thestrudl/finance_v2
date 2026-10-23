@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Repeats{% endblock %}
+{% block eyebrow %}Data{% endblock %}
+{% block content %}
+<div class="toolbar"><h1>Monthly repeats</h1></div>
+<p class="muted note">
+  Logged automatically on their day of the month (day 31 means the last day in shorter months).
+  From Telegram: <code>repeat tel 19.89 18 comment</code> or <code>repeat in salary 2500 15</code>.
+  Net effect per month: <strong>{{ monthly | eur(True) }}</strong>.
+</p>
+
+<section class="card">
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th class="r">Day</th><th>Category</th><th class="r">Amount</th><th>Comment</th><th>Added by</th><th>Last logged</th><th></th></tr></thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td class="r">{{ row.day_of_month }}</td>
+          <td>{{ row.category }}{% if row.is_income %} <span class="badge">income</span>{% endif %}</td>
+          <td class="r nowrap {{ 'income' if row.is_income }}">{{ '+' if row.is_income }}{{ row.amount_cents | eur }}</td>
+          <td>{{ row.comment }}</td>
+          <td class="muted small">{{ row.user_name or '' }}</td>
+          <td class="muted small">{{ row.last_run or ('from ' ~ row.active_from) }}</td>
+          <td class="r">
+            <form method="post" action="{{ url_for('dashboard.delete_repeat', repeat_id=row.id) }}" class="inline"
+                  data-confirm="Stop this repeat? Entries it already logged stay.">
+              <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+              <button type="submit" class="link danger">Delete</button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="empty">No repeats yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<details class="card">
+  <summary>Add a repeat</summary>
+  <form method="post" action="{{ url_for('dashboard.add_repeat') }}" class="filters">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <label>Type
+      <select name="type"><option value="expense">Expense</option><option value="income">Income</option></select>
+    </label>
+    <label>Category <input name="category" list="category-list" required autocomplete="off"></label>
+    <label>Amount (€) <input name="amount" inputmode="decimal" required></label>
+    <label>Day <input name="day" type="number" min="1" max="31" required class="w-day"></label>
+    <label class="grow">Comment <input name="comment"></label>
+    <datalist id="category-list">{% for c in all_categories %}<option value="{{ c.key }}">{{ c.label }}</option>{% endfor %}</datalist>
+    <button type="submit" class="primary">Add</button>
+  </form>
+</details>
+{% endblock %}
