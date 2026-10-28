@@ -293,6 +293,10 @@ form.filters + .chart, form.filters + .chart-note { margin-top: 22px; }
 .chart-note { margin-bottom: 4px; }
 .section-head h2 { margin: 0; font-size: 1.5rem; }
 .w-money-lg { width: 150px; }
+.tile-form { display: flex; gap: 6px; margin-top: 8px; }
+.tile-form input { min-height: 32px; padding: 4px 8px; }
+.negative-value { color: var(--bad-text); }
+.delta.wrap { white-space: normal; }
 ol.setup { margin: 0 0 12px; padding-left: 1.3rem; display: flex; flex-direction: column; gap: 10px; max-width: 80ch; }
 .account-title { margin: 24px 0 12px; font-size: 1.3rem; }
 

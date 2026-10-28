@@ -369,6 +369,7 @@ def holdings_view():
     moment = now()
     accounts = [holdings.account_view(db, snap) for snap in holdings.latest(db)]
     estimate = liquidity.estimate(db)
+    fund = liquidity.security_fund(db)
     days, balances, checked = liquidity.daily(db, moment.date())
     cash_chart = {
         "type": "line",
@@ -378,6 +379,9 @@ def holdings_view():
             {"name": "Balance checks", "values": checked, "color": "--ink", "kind": "points"},
         ],
     }
+    if fund:
+        cash_chart["series"].append({"name": "Security fund", "values": [fund] * len(days), "color": "--ref"})
+    typical_living = (insights.typical_month(db, month_key(moment)) or {}).get("living")
     ibkr_total = sum(account["total_cents"] for account in accounts)
     return render_template(
         "holdings.html",
@@ -385,12 +389,27 @@ def holdings_view():
         configured=ibkr.configured(),
         status=ibkr.status(db),
         estimate=estimate,
+        fund=fund,
+        free=(estimate["amount"] - fund) if estimate else None,
+        fund_months=(fund / typical_living) if fund and typical_living and typical_living > 0 else None,
+        changes=liquidity.changes(db),
         checks=liquidity.checks(db),
         cash_chart=cash_chart,
         ibkr_total=ibkr_total,
         net_worth=(estimate["amount"] if estimate else 0) + ibkr_total,
         default_time=moment.strftime("%Y-%m-%dT%H:%M"),
     )
+
+
+@bp.post("/holdings/security-fund")
+def holdings_security_fund():
+    amount = importer.parse_amount(request.form.get("amount", "") or "0")
+    if amount is None or amount < 0:
+        flash("The security fund must be a positive number, e.g. 10000")
+    else:
+        liquidity.set_security_fund(get_db(), to_cents(amount))
+        flash(f"Security fund set to {fmt_eur(to_cents(amount))}.")
+    return redirect(url_for(".holdings_view"))
 
 
 @bp.post("/holdings/balance")

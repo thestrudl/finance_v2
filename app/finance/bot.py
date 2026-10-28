@@ -391,9 +391,17 @@ def cmd_balance(chat_id, sender, amount_text=""):
                                     "right now, for example:\nbalance 4520.30")
         return
     check = est["check"]
+    fund = liquidity.security_fund(db)
+    free = ""
+    if fund:
+        left = est["amount"] - fund
+        free = (f"Free to use after the security fund ({fmt_eur(fund)}): {fmt_eur(left)}\n" if left >= 0 else
+                f"{fmt_eur(-left)} into the security fund ({fmt_eur(fund)})\n")
+    week = liquidity.changes(db, days=(7,)).get(7)
+    trend = f"Last 7 days: {fmt_eur(week, sign=True)}\n" if week is not None else ""
     telegram.send_text(
         chat_id,
-        f"Estimated bank & cash: {fmt_eur(est['amount'])}\n"
+        f"Estimated bank & cash: {fmt_eur(est['amount'])}\n{free}{trend}"
         f"Balance check {fmt_eur(check['amount_cents'])} on {check['checked_at'][8:10]}.{check['checked_at'][5:7]}., "
         f"then +{fmt_eur(est['income'])} in and −{fmt_eur(est['expense'])} out ({est['entries']} entries).\n"
         "Correct it any time with: balance AMOUNT",

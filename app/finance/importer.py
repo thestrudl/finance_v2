@@ -247,6 +247,8 @@ def parse_amount(text):
     if value.count(",") and value.count("."):
         decimal = "," if value.rfind(",") > value.rfind(".") else "."
         value = value.replace("." if decimal == "," else ",", "").replace(decimal, ".")
+    elif re.fullmatch(r"-?[1-9]\d{0,2}[.,]\d{3}", value):
+        value = value.replace(",", "").replace(".", "")  # "10.000" / "4,520": a thousands separator
     elif value.count(",") == 1:
         value = value.replace(",", ".")
     elif value.count(",") > 1 or value.count(".") > 1:

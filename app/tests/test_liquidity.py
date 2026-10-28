@@ -112,3 +112,33 @@ def test_outside_flag_from_the_edit_form(app, client, outbox):
     with app.app_context():
         assert get_db().execute("SELECT off_balance FROM transactions WHERE id = ?", (tx,)).fetchone()[0] == 1
     assert "outside" in client.get("/transactions").get_data(as_text=True)
+
+
+def test_security_fund_and_free_liquidity(app, client, outbox, sent):
+    with app.app_context():
+        assert liquidity.security_fund(get_db()) == 0
+    login(client, outbox)
+    page = client.get("/holdings")
+    client.post("/holdings/security-fund", data={"csrf": csrf_from(page), "amount": "10.000"})
+    with app.app_context():
+        assert liquidity.security_fund(get_db()) == 10000_00
+    check(app, "2026-01-01 08:00:00", 12500_00)
+    html = client.get("/holdings").get_data(as_text=True)
+    assert "Free to use" in html and "€2,500.00" in html and "after keeping €10,000.00 aside" in html
+    add_tx(app, "2026-01-02 09:00:00", 3000_00, "car")
+    html = client.get("/holdings").get_data(as_text=True)
+    assert "−€500.00" in html and "into the security fund" in html
+    post_update(client, message_update("balance"))
+    assert "€500.00 into the security fund (€10,000.00)" in texts(sent)[-1]
+
+
+def test_changes_over_7_and_30_days(app, monkeypatch):
+    from datetime import datetime
+
+    check(app, "2026-09-01 08:00:00", 5000_00)
+    add_tx(app, "2026-09-20 09:00:00", 400_00, "food")
+    add_tx(app, "2026-10-25 09:00:00", 100_00, "food")
+    monkeypatch.setattr(liquidity, "now", lambda: datetime(2026, 10, 28, 12, 0))
+    with app.app_context():
+        assert liquidity.changes(get_db()) == {7: -100_00, 30: -100_00}
+        assert liquidity.changes(get_db(), days=(60,)) == {60: None}  # before the first check

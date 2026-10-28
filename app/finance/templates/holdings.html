@@ -17,12 +17,36 @@
     <span class="tile-label">Bank &amp; cash, estimated</span>
     {% if estimate %}
     <span class="tile-value">{{ estimate.amount | eur }}</span>
+    {% for days, change in changes.items() if change is not none %}
+    <span class="delta {{ 'good' if change > 0 else ('bad' if change < 0 else '') }}">{{ '▲' if change > 0 else ('▼' if change < 0 else '≈') }} {{ (change | abs) | eur }} in {{ days }} days</span>
+    {% endfor %}
     <span class="delta">check of {{ estimate.check.checked_at[8:10] }}.{{ estimate.check.checked_at[5:7] }}. {{ estimate.check.amount_cents | eur }}</span>
-    <span class="delta">then +{{ estimate.income | eur }} in, −{{ estimate.expense | eur }} out</span>
     {% else %}
     <span class="tile-value">–</span>
     <span class="delta">enter a balance check below to start</span>
     {% endif %}
+  </div>
+  {% if estimate %}
+  <div class="tile" title="Bank & cash minus the security fund">
+    <span class="tile-label">Free to use</span>
+    <span class="tile-value {{ 'negative-value' if free < 0 }}">{{ free | eur(True) if free < 0 else free | eur }}</span>
+    {% if fund %}
+      {% if free < 0 %}<span class="delta bad">▼ {{ (-free) | eur }} into the security fund</span>
+      {% else %}<span class="delta">after keeping {{ fund | eur }} aside</span>{% endif %}
+    {% else %}
+      <span class="delta">no security fund set</span>
+    {% endif %}
+  </div>
+  {% endif %}
+  <div class="tile">
+    <span class="tile-label">Security fund</span>
+    <span class="tile-value">{{ fund | eur if fund else '–' }}</span>
+    {% if fund_months %}<span class="delta wrap">covers {{ '%.1f' | format(fund_months) }} typical months of living costs</span>{% endif %}
+    <form method="post" action="{{ url_for('dashboard.holdings_security_fund') }}" class="tile-form">
+      <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+      <input name="amount" inputmode="decimal" placeholder="{{ '%.0f' | format(fund / 100) if fund else 'e.g. 10000' }}" aria-label="Security fund in euros" class="w-money">
+      <button type="submit" class="small-btn">Set</button>
+    </form>
   </div>
   {% if accounts %}
   <div class="tile">
@@ -49,7 +73,7 @@
   </form>
 
   {% if cash_chart.labels | length > 1 %}
-  <p class="muted small chart-note">The line is each day's end balance; squares are balance checks as you read them.</p>
+  <p class="muted small chart-note">The line is each day's end balance; squares are balance checks as you read them{% if fund %}; the grey line is the security fund, so the gap above it is free to use{% endif %}.</p>
   <div class="chart"><canvas data-chart="cash-estimate" role="img" aria-label="Estimated bank and cash balance by day, with balance checks marked; the table below has the checks"></canvas></div>
   <script type="application/json" id="cash-estimate">{{ cash_chart | tojson }}</script>
   {% endif %}

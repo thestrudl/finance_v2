@@ -1,5 +1,7 @@
 # From a spreadsheet bot to a self-hosted finance portal
 
+<!-- All amounts in the screenshots are masked. -->
+
 *Household finance in Telegram messages, dashboards on my own server, and no third parties in between.*
 
 For a couple of years our household finances ran on a Google Apps Script bot. You'd text a Telegram bot something like `food 5.5 lunch`, and it appended a row to a Google Sheet. The sheet had formulas for monthly totals, there was a pie chart command, and eventually an "AI report" from Gemini. It worked, and logging was so cheap that we actually kept doing it, which is the hardest part of tracking money.
@@ -30,9 +32,15 @@ The same Telegram messages now go to a webhook on my server. A small Flask app s
 - **Business:** a page per side business, with profit by month, seasonality against last year, and *profit since the start*, which shows when an investment has been earned back.
 - **Holdings:** the brokerage account and an estimate of bank and cash, which together give net worth.
 
+![Monthly overview: tiles against a typical month, living costs through the month, income and spending over 12 months](screenshots/overview.png)
+
+![Year view: monthly totals, running net against last year, and where the money went and came from](screenshots/year.png)
+
 ## A few decisions worth explaining
 
 **Medians, not averages.** Household spending is lumpy: one month has a car repair, the next has a refund. An average would make every normal month look cheap. "Typical" in the app always means the median of the previous twelve months, and one-off "project" spending (a house, a wedding) can be switched off with a single toggle.
+
+![Living costs: everyday spending only, with a small chart per category](screenshots/living.png)
 
 **No AI.** The Gemini report was fun, but the useful parts of it were just arithmetic: what's above usual, which budgets are over, which expenses are unusual. Those are computed directly now. They're deterministic and free, and nothing leaves the server.
 
@@ -43,7 +51,11 @@ The same Telegram messages now go to a webhook on my server. A small Flask app s
 
 A payment that never touched your accounts, like a family gift paid straight to the seller, can be marked as such so it doesn't skew the estimate.
 
+![Holdings: net worth, the bank and cash estimate with balance checks, and the brokerage account](screenshots/holdings.png)
+
 **Investments through IBKR's Flex Web Service.** Interactive Brokers offers read-only reports over a small HTTP API, so there's no gateway to keep logged in. Every morning the server fetches the previous day's account value, cash per currency and positions. The first sync loads a year of history. When the token expires, Telegram says so.
+
+![A business page: income against costs, seasonality against last year, and profit since the start](screenshots/business.png)
 
 **Privacy by default:**
 - **Login:** passwordless. A one-time code or link arrives by email, and only the addresses in the config can log in.

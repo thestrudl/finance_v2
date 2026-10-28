@@ -46,6 +46,34 @@ def estimate(db, at=None):
     }
 
 
+def security_fund(db):
+    """Money kept aside (cents); not free to spend. 0 when not set."""
+    row = db.execute("SELECT value FROM settings WHERE key = 'security_fund_cents'").fetchone()
+    return int(row["value"]) if row else 0
+
+
+def set_security_fund(db, cents):
+    db.execute(
+        """INSERT INTO settings (key, value, updated_at) VALUES ('security_fund_cents', ?, ?)
+           ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at""",
+        (str(max(int(cents), 0)), ts(now())),
+    )
+    db.commit()
+
+
+def changes(db, days=(7, 30)):
+    """{days: change of the estimate since that many days ago}; None where
+    there was no balance check yet back then."""
+    current = estimate(db)
+    if current is None:
+        return {}
+    result = {}
+    for n in days:
+        then = estimate(db, ts(now() - timedelta(days=n)))
+        result[n] = current["amount"] - then["amount"] if then else None
+    return result
+
+
 def record_check(db, amount_cents, source, user_name, note="", at=None):
     """Store a balance check; returns (estimate just before it or None, drift or None)."""
     at = at or ts(now())

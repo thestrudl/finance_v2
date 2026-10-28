@@ -73,6 +73,7 @@ MIGRATIONS = [
     _migration_4,
     _schema,  # 5: holdings (IBKR Flex snapshots) and sync_status
     _migration_6,
+    _schema,  # 7: settings (security fund)
 ]
 
 

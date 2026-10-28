@@ -94,6 +94,14 @@ CREATE TABLE IF NOT EXISTS balance_checks (
     created_at   TEXT NOT NULL
 );
 
+-- Small household settings, e.g. security_fund_cents: money kept aside that
+-- doesn't count as free to spend.
+CREATE TABLE IF NOT EXISTS settings (
+    key        TEXT PRIMARY KEY,
+    value      TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
 -- Holdings: an account's value at the close of a day, as its source reports it
 -- (IBKR Flex for now). Money in the account's base currency, in cents.
 CREATE TABLE IF NOT EXISTS holding_snapshots (
