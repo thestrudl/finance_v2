@@ -87,12 +87,17 @@ def default_label(spelled):
     return spelled[:1].upper() + spelled[1:].lower()
 
 
+def lookup(db, raw):
+    """Canonical category key for a spelling, without creating anything."""
+    alias = raw.strip().lower()
+    row = db.execute("SELECT category_key FROM category_aliases WHERE alias = ?", (alias,)).fetchone()
+    return row["category_key"] if row else alias
+
+
 def resolve(db, raw):
     """Canonical category key for a spelling, creating the category if new."""
     spelled = raw.strip()
-    alias = spelled.lower()
-    row = db.execute("SELECT category_key FROM category_aliases WHERE alias = ?", (alias,)).fetchone()
-    key = row["category_key"] if row else alias
+    key = lookup(db, spelled)
     db.execute(
         "INSERT OR IGNORE INTO categories (key, label) VALUES (?, ?)",
         (key, default_label(spelled)),

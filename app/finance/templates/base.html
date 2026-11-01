@@ -22,6 +22,7 @@
         <a href="{{ url_for('dashboard.living_view') }}" {% if here == 'dashboard.living_view' %}aria-current="page"{% endif %}>Living</a>
         <a href="{{ url_for('dashboard.businesses_view') }}" {% if here in ('dashboard.businesses_view', 'dashboard.business_view') %}aria-current="page"{% endif %}>Business</a>
         <a href="{{ url_for('dashboard.holdings_view') }}" {% if here == 'dashboard.holdings_view' %}aria-current="page"{% endif %}>Holdings</a>
+        <a href="{{ url_for('dashboard.forecast_view') }}" {% if here == 'dashboard.forecast_view' %}aria-current="page"{% endif %}>Forecast</a>
         <a href="{{ url_for('dashboard.transactions') }}" {% if here in ('dashboard.transactions', 'dashboard.edit_transaction') %}aria-current="page"{% endif %}>Transactions</a>
         <a href="{{ url_for('dashboard.categories_view') }}" {% if here in ('dashboard.categories_view', 'dashboard.category_view') %}aria-current="page"{% endif %}>Categories</a>
         <a href="{{ url_for('dashboard.repeats_view') }}" {% if here == 'dashboard.repeats_view' %}aria-current="page"{% endif %}>Repeats</a>

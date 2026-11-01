@@ -1,6 +1,6 @@
 # finance
 
-Self-hosted household finance. You log expenses and income by sending short messages to a Telegram bot (`food 5.5 lunch`, `in salary 2500`). A small Flask app on your own server stores them in SQLite and serves a private web portal with monthly, yearly, living-cost, business and holdings dashboards.
+Self-hosted household finance. You log expenses and income by sending short messages to a Telegram bot (`food 5.5 lunch`, `in salary 2500`). A small Flask app on your own server stores them in SQLite and serves a private web portal with monthly, yearly, living-cost, business and holdings dashboards, and a liquidity forecast.
 
 It started as a Google Apps Script bot writing to a spreadsheet. The message format is the same, so moving over changes nothing for whoever logs the entries.
 
@@ -34,6 +34,7 @@ finance-scheduler container: monthly repeats, daily backup, morning IBKR sync
   - **Bank and cash, estimated:** the last balance check plus everything logged since, with the drift shown at each new check.
   - **Interactive Brokers:** account value, cash, allocation and positions, from IBKR's read-only Flex Web Service.
   - **Net worth:** the two together.
+- **Forecast:** bank and cash, and what's free above the security fund, on any day up to three years ahead. It uses your repeats as set up, the average living month, and income and business costs from the same month last year, plus any planned one-offs (a car, a holiday). It shows the lowest point and when you'd dip into the security fund.
 - **Data:** edit transactions, merge misspelt categories (every entry keeps its original spelling, and Split off undoes a merge), set groups and budgets, and manage repeats.
 
 Groups decide what counts where: *Living*, *Business*, *Project* (a house, a wedding) and *Savings*. "Without projects & savings" hides one-off amounts so they don't swamp everyday spending.
@@ -53,6 +54,7 @@ Python 3.12, Flask, gunicorn and SQLite, with Chart.js (vendored) and matplotlib
 | `app/finance/auth.py`, `mail.py` | Passwordless login, SMTPS |
 | `app/finance/dashboard.py`, `insights.py` | Portal pages and the queries behind them |
 | `app/finance/liquidity.py`, `ibkr.py`, `holdings.py` | Bank and cash estimate, IBKR Flex, holdings |
+| `app/finance/forecast.py` | Liquidity forecast |
 | `app/finance/reports.py` | Telegram `report` chart and `summary` |
 | `app/finance/repeats.py`, `scheduler.py` | Monthly repeats, backups, morning sync |
 | `app/finance/importer.py` | Import from a Google Sheet (.csv or .ods) |

@@ -323,3 +323,8 @@ ol.setup { margin: 0 0 12px; padding-left: 1.3rem; display: flex; flex-direction
   .tile-value { font-size: 1.4rem; }
   .chart { height: 240px; }
 }
+
+/* ── forecast ── */
+.forecast-form details { margin-top: 14px; }
+.presets { display: flex; flex-wrap: wrap; gap: 6px; }
+.planned-row { margin-bottom: 10px; }

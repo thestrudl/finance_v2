@@ -2,12 +2,12 @@
 import calendar
 import itertools
 import statistics
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import InvalidOperation
 
 from flask import Blueprint, abort, flash, redirect, render_template, request, session, url_for
 
-from . import categories, holdings, ibkr, importer, insights, liquidity
+from . import categories, forecast, holdings, ibkr, importer, insights, liquidity
 from .bot import run_in_background
 from .auth import login_required
 from .categories import GROUPS
@@ -454,6 +454,103 @@ def holdings_sync():
     flash("Syncing with IBKR. Reload in a minute." if days is None
           else "Loading a year of history from IBKR. Reload in a minute or two.")
     return redirect(url_for(".holdings_view"))
+
+
+PLANNED_ROWS = 3
+
+
+def _forecast_until(today):
+    """The day to forecast to: a preset button, the date field, or six months on."""
+    presets = _forecast_presets(today)
+    chosen = presets.get(request.args.get("preset", ""))
+    if chosen is None:
+        try:
+            chosen = date.fromisoformat(request.args.get("until", ""))
+        except ValueError:
+            chosen = presets["6m"]
+    return min(max(chosen, today + timedelta(days=1)), today + timedelta(days=forecast.MAX_DAYS))
+
+
+def _forecast_presets(today):
+    def month_end(months):
+        ym = shift_month(month_key(today), months)
+        return date(int(ym[:4]), int(ym[5:]), forecast.days_in(ym))
+
+    presets = {"month": month_end(0), "3m": month_end(3), "6m": month_end(6), "12m": month_end(12),
+               "year": date(today.year, 12, 31)}
+    if presets["month"] == today:
+        presets["month"] = month_end(1)
+    if presets["year"] <= today:
+        presets["year"] = date(today.year + 1, 12, 31)
+    return presets
+
+
+def _planned_args(today, until):
+    """Planned one-offs from the form: (entries inside the window, rows to show again)."""
+    entries, rows = [], []
+    for when, amount, way, label in zip(request.args.getlist("p_day"), request.args.getlist("p_amount"),
+                                        request.args.getlist("p_way"), request.args.getlist("p_label")):
+        cents = to_cents(value) if (value := importer.parse_amount(amount)) is not None else None
+        try:
+            day = date.fromisoformat(when)
+        except ValueError:
+            day = None
+        if not cents and not label.strip():
+            continue
+        row = {"day": when, "amount": amount, "way": "in" if way == "in" else "out", "label": label.strip(),
+               "outside": day is not None and not (today < day <= until), "invalid": day is None or not cents}
+        rows.append(row)
+        if not row["outside"] and not row["invalid"]:
+            entries.append({"day": day, "cents": abs(cents) if row["way"] == "in" else -abs(cents),
+                            "label": row["label"]})
+    rows += [{"day": "", "amount": "", "way": "out", "label": ""}] * max(PLANNED_ROWS - len(rows), 1)
+    return entries, rows
+
+
+@bp.get("/forecast")
+def forecast_view():
+    db = get_db()
+    today = now().date()
+    until = _forecast_until(today)
+    planned, planned_rows = _planned_args(today, until)
+    current = liquidity.estimate(db)
+    fund = liquidity.security_fund(db)
+    start = current["amount"] if current else 0
+    result = forecast.build(db, today, until, start, planned, fund)
+
+    past_days, past_values, _ = liquidity.daily(db, today, days=90) if current else ([], [], [])
+    past_days, past_values = past_days[:-1], past_values[:-1]  # today is the forecast's first point
+    labels = past_days + [today.isoformat()] + [day.isoformat() for day in result["days"]]
+    chart = {
+        "type": "line",
+        "labels": [holdings.short_date(day) for day in labels],
+        "series": [
+            {"name": "Estimated so far", "values": past_values + [start] + [None] * len(result["days"]),
+             "color": "--s1"},
+            {"name": "Forecast", "values": [None] * len(past_days) + [start] + result["balances"],
+             "color": "--s1", "dash": True},
+        ],
+    }
+    if fund:
+        chart["series"].append({"name": "Security fund", "values": [fund] * len(labels), "color": "--ref"})
+
+    months = max(len(result["days"]) / 30.44, 1)
+    return render_template(
+        "forecast.html",
+        today=today,
+        until=until,
+        first_day=today + timedelta(days=1),
+        last_day=today + timedelta(days=forecast.MAX_DAYS),
+        presets=_forecast_presets(today),
+        planned=planned,
+        planned_rows=planned_rows,
+        current=current,
+        fund=fund,
+        result=result,
+        per_month=round((result["end"] - start) / months),
+        chart=chart,
+        repeats=insights.recurring(db),
+    )
 
 
 @bp.get("/category/<key>")

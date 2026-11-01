@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block title %}Forecast{% endblock %}
+{% block eyebrow %}Forecast{% endblock %}
+{% macro money(cents) -%}
+  <span class="{{ 'negative-value' if cents < 0 }}">{{ cents | eur }}</span>
+{%- endmacro %}
+{% macro day_label(day) %}{{ day.day }} {{ day.strftime('%b %Y') }}{% endmacro %}
+{% block content %}
+<div class="toolbar"><h1>Forecast</h1></div>
+
+{% if not current %}
+<p class="flash">There's no balance check yet, so the forecast starts at €0 and shows only how much would come in or go out.
+  Enter one on <a href="{{ url_for('dashboard.holdings_view') }}">Holdings</a> to forecast the actual balance.</p>
+{% endif %}
+
+<form method="get" action="{{ url_for('dashboard.forecast_view') }}" class="card forecast-form">
+  <div class="filters">
+    <label>Forecast to <input type="date" name="until" value="{{ until.isoformat() }}"
+      min="{{ first_day.isoformat() }}" max="{{ last_day.isoformat() }}"></label>
+    <button type="submit" class="primary">Forecast</button>
+    <span class="presets">
+      <button type="submit" name="preset" value="month" class="btn">End of month</button>
+      <button type="submit" name="preset" value="3m" class="btn">3 months</button>
+      <button type="submit" name="preset" value="6m" class="btn">6 months</button>
+      <button type="submit" name="preset" value="year" class="btn">End of {{ presets.year.year }}</button>
+      <button type="submit" name="preset" value="12m" class="btn">12 months</button>
+    </span>
+  </div>
+  <details {% if planned_rows | selectattr('label') | list or planned_rows | selectattr('amount') | list %}open{% endif %}>
+    <summary>Planned one-offs</summary>
+    <p class="muted small">Things you expect that history won't show: a car, a holiday, a bonus, a tax refund. Not saved; they stay in the link.</p>
+    {% for p in planned_rows %}
+    <div class="filters planned-row">
+      <label>Day <input type="date" name="p_day" value="{{ p.day }}"></label>
+      <label>Amount (€) <input name="p_amount" value="{{ p.amount }}" inputmode="decimal" class="w-money"></label>
+      <label>Way <select name="p_way">
+        <option value="out" {% if p.way == 'out' %}selected{% endif %}>Going out</option>
+        <option value="in" {% if p.way == 'in' %}selected{% endif %}>Coming in</option>
+      </select></label>
+      <label class="grow">What <input name="p_label" value="{{ p.label }}" placeholder="e.g. new car"></label>
+      {% if p.invalid %}<span class="delta bad">needs a day and an amount</span>
+      {% elif p.outside %}<span class="delta bad">outside the forecast</span>{% endif %}
+    </div>
+    {% endfor %}
+    <button type="submit" class="btn">Apply</button>
+  </details>
+</form>
+
+{% set free_now = result.start - fund %}
+{% set free_end = result.end - fund %}
+<section class="tiles">
+  <div class="tile">
+    <span class="tile-label">{{ 'Free to use' if fund else 'Bank & cash' }} now</span>
+    <span class="tile-value">{{ money(free_now) }}</span>
+    <span class="delta">{% if fund %}{{ result.start | eur }} minus the {{ fund | eur }} security fund{% else %}estimated, no security fund set{% endif %}</span>
+  </div>
+  <div class="tile">
+    <span class="tile-label">{{ 'Free to use' if fund else 'Bank & cash' }} on {{ day_label(until) }}</span>
+    <span class="tile-value">{{ money(free_end) }}</span>
+    {% set change = result.end - result.start %}
+    <span class="delta {{ 'good' if change > 0 else ('bad' if change < 0 else '') }}">{{ '▲' if change > 0 else ('▼' if change < 0 else '≈') }} {{ (change | abs) | eur }} from today</span>
+    {% if fund %}<span class="delta">bank &amp; cash {{ result.end | eur }}</span>{% endif %}
+  </div>
+  <div class="tile">
+    <span class="tile-label">Lowest point</span>
+    <span class="tile-value">{{ money(result.low.amount - fund) }}</span>
+    <span class="delta">{{ 'today' if result.low.day == today else 'on ' ~ day_label(result.low.day) }}</span>
+    {% if result.below_fund %}
+    <span class="delta bad wrap">▼ dips into the security fund on {{ day_label(result.below_fund.day) }}</span>
+    {% elif result.low.amount < 0 %}
+    <span class="delta bad wrap">▼ the accounts go below zero</span>
+    {% endif %}
+  </div>
+  <div class="tile">
+    <span class="tile-label">Per month, on average</span>
+    <span class="tile-value">{{ per_month | eur(True) }}</span>
+    <span class="delta wrap">average living month {{ result.average_living | eur }}; repeats {{ (repeats.income - repeats.expense) | eur(True) }}</span>
+  </div>
+</section>
+
+<section class="card">
+  <h2>Bank &amp; cash, forecast</h2>
+  <p class="muted small chart-note">Solid: the estimate so far (90 days). Dashed: the forecast, each day's end balance{% if fund %}; the grey line is the security fund{% endif %}.</p>
+  <div class="chart"><canvas data-chart="forecast-chart" role="img" aria-label="Bank and cash: the estimate of the last 90 days and the forecast to {{ day_label(until) }}; the table below has month-end values"></canvas></div>
+  <script type="application/json" id="forecast-chart">{{ chart | tojson }}</script>
+</section>
+
+<section class="card">
+  <h2>Month by month</h2>
+  <div class="table-wrap">
+    <table class="num tx">
+      <thead><tr>
+        <th>Month</th><th>Income</th><th>Repeats in</th><th>Repeats out</th><th>Living</th><th>Business costs</th>
+        {% if planned %}<th>Planned</th>{% endif %}<th>Net</th><th>Bank &amp; cash at the end</th>{% if fund %}<th>Free to use</th>{% endif %}
+      </tr></thead>
+      <tbody>
+        {% for m in result.months %}
+        <tr>
+          <td><strong>{{ m.month | month_name(True) }}</strong>
+            <div class="muted small">{{ m.first.day }}–{{ m.last.day }} · {% if m.estimated %}average month{% else %}as {{ m.source | month_name(True) }}{% endif %}</div></td>
+          <td class="income">{{ m.income | eur }}</td>
+          <td class="income">{{ m.repeat_in | eur if m.repeat_in else '' }}</td>
+          <td>{{ m.repeat_out | eur if m.repeat_out else '' }}</td>
+          <td>{{ m.living | eur }}</td>
+          <td>{{ m.business | eur if m.business else '' }}</td>
+          {% if planned %}<td>{{ m.planned | eur(True) if m.planned else '' }}</td>{% endif %}
+          <td><span class="delta {{ 'good' if m.net > 0 else ('bad' if m.net < 0 else '') }}">{{ m.net | eur(True) }}</span></td>
+          <td><strong>{{ money(m.end) }}</strong></td>
+          {% if fund %}<td>{{ money(m.end - fund) }}</td>{% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if planned %}
+  <p class="muted small">Planned: {% for p in planned %}{{ p.label or 'one-off' }} {{ p.cents | eur(True) }} on {{ day_label(p.day) }}{{ ', ' if not loop.last }}{% endfor %}.</p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>How this is worked out</h2>
+  <ul class="setup">
+    <li><strong>Start:</strong> today's bank &amp; cash estimate{% if current %} ({{ result.start | eur }}){% endif %}, the latest balance check plus everything logged since.</li>
+    <li><strong>Repeats</strong> exactly as set up on <a href="{{ url_for('dashboard.repeats_view') }}">Repeats</a>, on their day of the month.</li>
+    <li><strong>Income and business costs</strong> as on the same days of that month a year earlier, so seasons (rentals, the bike season) carry over.
+      A month with no history at all uses the average month.</li>
+    <li><strong>Living costs</strong> as the average month of the last {{ result.history_months }} full month{{ 's' if result.history_months != 1 }}, spread over the month the way they usually fall.
+      The average rather than the typical (median) month the other pages show: over several months the odd holiday or car repair does happen.</li>
+    <li>Not projected: project and savings entries (one-offs like the house or a wedding; add what you expect as planned one-offs),
+      entries outside our accounts, and past entries matching a repeat (same category, amount and direction), so a repeat isn't counted twice.</li>
+  </ul>
+</section>
+{% endblock %}

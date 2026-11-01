@@ -30,7 +30,8 @@
   // from the JSON <script> its canvas names in data-chart.
   //   bar      grouped bars          stacked  bars stacked per label
   //   line     2px lines; a series coloured --ref is the grey reference
-  // A series with kind "line" inside a bar chart is drawn as a line over the bars.
+  // A series with kind "line" inside a bar chart is drawn as a line over the bars;
+  // dash: true draws a line dashed (a forecast continuing a solid line).
   // compact: true trims ticks for small multiples.
   function dataset(type, s, surface) {
     var values = s.values.map(function (v) { return v === null ? null : v / 100; });
@@ -48,7 +49,7 @@
         type: "line",
         label: s.name, data: values, borderColor: color, backgroundColor: color,
         borderWidth: 2, pointRadius: 0, pointHoverRadius: 5, pointHitRadius: 12,
-        tension: 0, spanGaps: false,
+        tension: 0, spanGaps: false, borderDash: s.dash ? [6, 4] : [],
         // Lower order draws on top: over bars a reference line goes first, in a line chart last.
         order: type === "line" ? (reference ? 2 : 1) : 0
       };
