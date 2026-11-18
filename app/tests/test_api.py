@@ -146,3 +146,23 @@ def test_put_rejects_odd_keys_and_needs_the_token(house):
     response = client.put("/api/v1/transactions/k4", json={}, headers={"Authorization": "Bearer nope"})
     assert response.status_code == 401
     assert client.delete("/api/v1/transactions/k4").status_code == 401
+
+
+def test_list_transactions_in_a_category(house):
+    add_tx(house, "2026-09-01 10:00:00", 2_000_00, "hisa", comment="Kitchen deposit")
+    add_tx(house, "2026-10-05 10:00:00", 800_00, "Hisa", comment="Parquet samples")
+    add_tx(house, "2026-10-06 10:00:00", 50_00, "food")
+    add_tx(house, "2026-10-07 10:00:00", 100_00, "hisa", is_income=True)  # not an expense
+    client = house.test_client()
+    put(client, "renovation-payment-1", comment="from the planner")
+    body = client.get("/api/v1/transactions?category=Hisa", headers=AUTH).get_json()
+    assert body["category"] == "hisa"
+    rows = body["transactions"]
+    assert [(r["occurred_at"][:10], r["amount_cents"], r["comment"], r["api_key"]) for r in rows] == [
+        ("2026-11-10", 500_00, "from the planner", "renovation-payment-1"),
+        ("2026-10-05", 800_00, "Parquet samples", None),
+        ("2026-09-01", 2_000_00, "Kitchen deposit", None),
+    ]
+    assert rows[1]["off_balance"] is False and "id" in rows[1]
+    assert client.get("/api/v1/transactions?category=nope", headers=AUTH).status_code == 400
+    assert client.get("/api/v1/transactions?category=hisa").status_code == 401

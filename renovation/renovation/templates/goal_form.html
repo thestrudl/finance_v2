@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import flag_badge, payment_fields, commitment_fields, finance_badge %}
+{% from "_macros.html" import flag_badge, payment_fields, commitment_fields, finance_badge, needs_picker, item_waits %}
 {% block title %}{{ goal.title if goal else 'New big item' }}{% endblock %}
 {% block eyebrow %}Big item{% endblock %}
 {% block content %}
@@ -17,6 +17,7 @@
       <input name="budget" value="{{ form.budget or '' }}" inputmode="decimal" class="w-money-lg">
     </label>
     <p class="muted small">The budget counts in the cash flow on the deadline until the tasks under it have their own estimates.</p>
+    {% if choices %}{{ needs_picker(choices, needs, 'None of its work starts before all of these are finished.') }}{% endif %}
     <label>Notes <textarea name="notes" rows="7" placeholder="Decisions, measurements, offers, who to call…">{{ form.notes or '' }}</textarea></label>
     <div class="row">
       <button type="submit" class="primary">Save</button>
@@ -38,6 +39,7 @@
     <h2>The work under it</h2>
     <a class="btn" href="{{ url_for('views.new_task', goal=goal.id, next=request.full_path.rstrip('?')) }}">+ Task</a>
   </div>
+  {{ item_waits(goal_plan.item_needs) }}
   {% if goal_plan.tasks %}
   <div class="table-wrap">
   <table class="stack-table">
@@ -118,7 +120,9 @@
     </form>
   </details>
 
-  <div class="section-title-row money-gap"><h3>Paid</h3></div>
+  <div class="section-title-row money-gap"><h3>Paid</h3>
+    {% if finance_enabled %}<a class="btn" href="{{ url_for('views.link_payments', goal_id=goal.id) }}">Link from finance</a>{% endif %}
+  </div>
   {% if goal_plan.payments %}
   <div class="table-wrap">
   <table class="stack-table">

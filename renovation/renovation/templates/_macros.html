@@ -31,10 +31,8 @@
     {% if t.who %}<span>{{ t.who }}</span>{% endif %}
     {% if t.cost_cents or t.paid %}<span>{{ t.cost_cents | eur }}{% if t.paid %}, {{ t.paid | eur }} paid{% endif %}{% if t.committed_open %}, {{ t.committed_open | eur }} committed{% endif %}</span>{% endif %}
   </div>
-  {% if t.blocked_by %}
-  <div class="task-meta waiting">Waiting for:
-    {% for n in t.blocked_by %}{{ plan.tasks[n].title }}{{ ', ' if not loop.last }}{% endfor %}
-  </div>
+  {% if t.waiting_for %}
+  <div class="task-meta waiting">Waiting for: {{ t.waiting_for | join(', ') }}</div>
   {% endif %}
   {% if t.flag and t.status == 'todo' %}
   <div class="task-meta">Must start by {{ t.latest_start | day }}</div>
@@ -112,10 +110,10 @@
   {{ goal_list(plan) }}
 {% endmacro %}
 
-{% macro payment_fields(form, goal_plan, finance_enabled, editing=False) %}
+{% macro payment_fields(form, goal_plan, finance_enabled, editing=False, linked=False) %}
   <div class="form-grid">
-    <label>Amount (€) <input name="amount" value="{{ form.amount or '' }}" inputmode="decimal" required></label>
-    <label>Paid on <input type="date" name="paid_on" value="{{ form.paid_on or '' }}" required></label>
+    <label>Amount (€) <input name="amount" value="{{ form.amount or '' }}" inputmode="decimal" required {{ 'readonly' if linked }}></label>
+    <label>Paid on <input type="date" name="paid_on" value="{{ form.paid_on or '' }}" required {{ 'readonly' if linked }}></label>
     <label class="span-2">What <input name="what" value="{{ form.what or '' }}" placeholder="e.g. Deposit, materials, final invoice"></label>
     <label>For the task
       <select name="task_id">
@@ -130,9 +128,14 @@
       </select>
     </label>
   </div>
+  {% if linked %}
+  <p class="muted small">Linked from finance: the amount and day come from there and follow any change made there.</p>
+  {% else %}
   <label class="check"><input type="checkbox" name="off_balance" value="1" {% if form.off_balance %}checked{% endif %}>
     Paid outside our accounts (a loan or gift paid straight to the seller)</label>
-  {% if finance_enabled %}
+  {% endif %}
+  {% if linked %}
+  {% elif finance_enabled %}
   <label class="check"><input type="checkbox" name="log" value="1" {% if form.log %}checked{% endif %}>
     {{ 'Keep it in finance' if editing else 'Log it in finance' }}
     <span class="muted small">untick if it's already logged there, e.g. through Telegram</span></label>
@@ -159,7 +162,41 @@
 
 {% macro finance_badge(p) -%}
   {%- if p.finance == 'logged' -%}<span class="badge badge-done" title="Logged in finance">in finance</span>
+  {%- elif p.finance == 'linked' -%}<span class="badge badge-done" title="Logged in finance some other way, linked here">from finance</span>
   {%- elif p.finance == 'failed' -%}<span class="badge badge-late" title="{{ p.finance_error or '' }}">not in finance yet</span>
   {%- else -%}<span class="badge" title="Not logged from here (already in finance, or left out)">not logged here</span>
   {%- endif -%}
 {%- endmacro %}
+
+{# choices: [(big item, its tasks that may be picked, whether the whole item may be picked)];
+   needs: {"tasks": [ids], "goals": [ids]} already picked. #}
+{% macro needs_picker(choices, needs, note) %}
+<fieldset class="needs">
+  <legend>Has to wait for</legend>
+  <p class="muted small">{{ note }}</p>
+  <div class="needs-list">
+  {% for g, tasks, whole in choices if tasks or whole %}
+    <div class="needs-group">
+      <h3>{{ g.title }}</h3>
+      {% if whole %}
+      <label class="check whole"><input type="checkbox" name="needs_goal" value="{{ g.id }}" {% if g.id in needs.goals %}checked{% endif %}>
+        All of it <span class="muted small">{% if g.end %}{{ g.end | day }}{% else %}no tasks yet{% endif %}{% if g.finished %}, done{% endif %}</span></label>
+      {% endif %}
+      {% for t in tasks %}
+      <label class="check"><input type="checkbox" name="needs" value="{{ t.id }}" {% if t.id in needs.tasks %}checked{% endif %}>
+        {{ t.title }} <span class="muted small">{{ t.end | day }}{% if t.status == 'done' %}, done{% endif %}</span></label>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="empty">Nothing else to wait for yet.</p>
+  {% endfor %}
+  </div>
+</fieldset>
+{% endmacro %}
+
+{% macro item_waits(item_needs) %}
+  {% if item_needs %}
+  <p class="small waits">Waits for:
+    {% for d in item_needs %}<span class="{{ 'muted' if d.finished }}">{{ d.title }}{{ ' ✓' if d.finished }}</span>{{ ', ' if not loop.last }}{% endfor %}</p>
+  {% endif %}
+{% endmacro %}

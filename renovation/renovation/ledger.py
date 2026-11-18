@@ -76,6 +76,42 @@ def send(db, payment_id):
     return error
 
 
+def finance_transactions():
+    """(expenses in RENOVATION_FINANCE_CATEGORY, newest first, None) or (None, why not)."""
+    cfg = current_app.config
+    if not enabled():
+        return None, "linking needs FINANCE_API_TOKEN and RENOVATION_FINANCE_CATEGORY"
+    try:
+        response = requests.get(
+            f"{cfg['FINANCE_API_URL'].rstrip('/')}/api/v1/transactions", params={"category": cfg["FINANCE_CATEGORY"]},
+            timeout=8, headers={"Authorization": f"Bearer {cfg['FINANCE_API_TOKEN']}"},
+        )
+        body = response.json()
+    except (requests.RequestException, ValueError) as exc:
+        log.warning("Finance transactions failed: %s", exc)
+        return None, "finance didn't answer"
+    if response.status_code >= 400:
+        return None, body.get("error") or f"finance answered {response.status_code}"
+    return body["transactions"], None
+
+
+def refresh_linked(db, transactions):
+    """Linked payments follow their finance transaction: amount, day, outside-accounts.
+    Returns the linked payments whose transaction is gone from finance."""
+    by_id = {t["id"]: t for t in transactions}
+    gone = []
+    for p in db.execute("SELECT * FROM payments WHERE finance = 'linked'").fetchall():
+        t = by_id.get(p["finance_tx_id"])
+        if t is None:
+            gone.append(dict(p))
+        elif (t["amount_cents"], t["occurred_at"][:10], int(t["off_balance"])) != (
+                p["amount_cents"], p["paid_on"], p["off_balance"]):
+            db.execute("UPDATE payments SET amount_cents = ?, paid_on = ?, off_balance = ? WHERE id = ?",
+                       (t["amount_cents"], t["occurred_at"][:10], int(t["off_balance"]), p["id"]))
+    db.commit()
+    return gone
+
+
 def remove(key):
     """Take a payment out of finance again; None or the reason it failed."""
     if not key:

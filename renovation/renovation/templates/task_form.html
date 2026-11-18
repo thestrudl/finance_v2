@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import flag_badge %}
+{% from "_macros.html" import flag_badge, needs_picker %}
 {% block title %}{{ task.title if task else 'New task' }}{% endblock %}
 {% block eyebrow %}Task{% endblock %}
 {% block content %}
@@ -65,23 +65,7 @@
       {% endif %}
     </div>
 
-    <fieldset class="needs">
-      <legend>Has to wait for</legend>
-      <p class="muted small">It starts the day after all of these are finished.</p>
-      <div class="needs-list">
-      {% for g, tasks in choices if tasks %}
-        <div class="needs-group">
-          <h3>{{ g.title }}</h3>
-          {% for t in tasks %}
-          <label class="check"><input type="checkbox" name="needs" value="{{ t.id }}" {% if t.id in needs %}checked{% endif %}>
-            {{ t.title }} <span class="muted small">{{ t.end | day }}{% if t.status == 'done' %}, done{% endif %}</span></label>
-          {% endfor %}
-        </div>
-      {% else %}
-        <p class="empty">No other tasks yet.</p>
-      {% endfor %}
-      </div>
-    </fieldset>
+    {{ needs_picker(choices, needs, 'It starts the day after all of these are finished.') }}
 
     <label>Notes <textarea name="notes" rows="7" placeholder="What exactly, materials, measurements, the offer, phone numbers…">{{ form.notes or '' }}</textarea></label>
     <div class="row">

@@ -139,13 +139,14 @@ A second app for a house renovation, at its own address and behind the same kind
 **Plan:**
 - Start with the big items, each with a deadline: *Doors on the 2nd floor, done by 1 May*.
 - Under each, add the work it needs, how many days each part takes and what it waits for. For the doors: walls and electricity, then drywall, then parquet, then the doors.
+- A big item, or a task, can also wait for a whole big item (every task in it finished) or for one task in another big item: *the kitchen waits for all of the floor*, *the doors wait for the plaster*.
 - Each task starts the day after everything it waits for is finished. It never starts before today or before a *not before* date (for example, when the contractor can come).
 - Working back from the deadlines, each task gets a latest start. A task with only a few days to spare is marked **tight**. One that will finish too late is marked **late**, and so is everything that holds it up, even under another big item.
 
 **Gantt chart (computer):**
 - Drag a bar to move it.
 - Drag its right edge to change how long it takes.
-- Drag the dot at its end onto the task that has to wait for it.
+- Drag the dot at its end onto the task that has to wait for it, or onto a big item's row to make all of it wait.
 - Drag a deadline ◆ to move it.
 - Click a dependency arrow to remove that link.
 - Whatever depends on a task moves with it.
@@ -158,6 +159,7 @@ A second app for a house renovation, at its own address and behind the same kind
 - **Recording a payment logs it in finance** as an expense under `RENOVATION_FINANCE_CATEGORY`, with a comment like *Renovation · Doors, 2nd floor · Deposit*. Editing or deleting it there changes or removes it in finance too.
   - Untick *Log it in finance* for a payment that's already there, for example one sent through Telegram.
   - If finance doesn't answer, the payment is kept and marked *not in finance yet*, with a Retry button.
+- **Link from finance** lists the payments already logged under the house category some other way (Telegram, the portal, an import). Tick the ones that belong to a big item: they count as paid there and follow any change made in finance. Unlinking never deletes anything in finance.
 - What's still to pay is taken off the finance forecast, which leaves out Project and Savings one-offs, so nothing counts twice:
   - open commitments, on their due date;
   - the part of each estimate that isn't paid or committed yet.

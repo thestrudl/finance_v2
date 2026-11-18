@@ -100,10 +100,57 @@ def _goal_form(form):
     return values, errors
 
 
-def _goal_page(goal, values, errors, status=200):
+def _goal_needs(form, goal_id):
+    """({"tasks", "goals"} this big item waits for, errors)."""
+    db = get_db()
+    needs, errors, added = {"tasks": [], "goals": []}, [], []
+    picks = [("goal", raw) for raw in form.getlist("needs_goal")] + [("task", raw) for raw in form.getlist("needs")]
+    for kind, raw in picks:
+        try:
+            item_id = int(raw)
+        except ValueError:
+            continue
+        row = db.execute(f"SELECT title{', goal_id' if kind == 'task' else ''} FROM {kind}s WHERE id = ?",
+                         (item_id,)).fetchone()
+        if row is None:
+            continue
+        item = {"goal_id": goal_id, "needs_goal_id": item_id if kind == "goal" else None,
+                "needs_task_id": item_id if kind == "task" else None}
+        own = item_id == goal_id if kind == "goal" else row["goal_id"] == goal_id
+        if own or (goal_id is not None and plan.creates_cycle(db, item_deps=added + [item], replace_goal=goal_id)):
+            errors.append(f"It can't wait for “{row['title']}”: "
+                          + ("that's part of this big item." if own else "that already waits for this one."))
+            continue
+        added.append(item)
+        needs[kind + "s"].append(item_id)
+    return needs, errors
+
+
+def _save_goal_needs(db, goal_id, needs):
+    db.execute("DELETE FROM item_deps WHERE goal_id = ?", (goal_id,))
+    db.executemany("INSERT OR IGNORE INTO item_deps (goal_id, needs_goal_id, needs_task_id) VALUES (?, ?, ?)",
+                   [(goal_id, g, None) for g in needs["goals"]] + [(goal_id, None, t) for t in needs["tasks"]])
+
+
+def _goal_choices(goal_id):
+    current = _plan()
+    if goal_id is None:
+        return _choices(current, set(), set())
+    bad_goals, bad_tasks = plan.loop_makers(get_db(), goal_id=goal_id)
+    return _choices(current, bad_goals, bad_tasks)
+
+
+def _stored_goal_needs(db, goal_id):
+    rows = db.execute("SELECT needs_goal_id, needs_task_id FROM item_deps WHERE goal_id = ?", (goal_id,)).fetchall()
+    return {"goals": [r[0] for r in rows if r[0]], "tasks": [r[1] for r in rows if r[1]]}
+
+
+def _goal_page(goal, values, errors, status=200, needs=None):
     form = {**(goal or {}), **values}
     form["budget"] = request.form.get("budget") if errors else plain_amount(form.get("budget_cents"))
-    return render_template("goal_form.html", goal=goal, form=form, errors=errors), status
+    return render_template("goal_form.html", goal=goal, form=form, errors=errors,
+                           choices=_goal_choices(goal["id"] if goal else None),
+                           needs=needs or {"tasks": [], "goals": []}), status
 
 
 @bp.route("/goals/new", methods=["GET", "POST"])
@@ -111,13 +158,15 @@ def new_goal():
     if request.method == "GET":
         return _goal_page(None, {"deadline": request.args.get("deadline", "")}, [])
     values, errors = _goal_form(request.form)
-    if errors:
-        return _goal_page(None, values, errors, 400)
+    needs, need_errors = _goal_needs(request.form, None)
+    if errors or need_errors:
+        return _goal_page(None, values, errors + need_errors, 400, needs)
     db = get_db()
     cur = db.execute(
         "INSERT INTO goals (title, deadline, budget_cents, notes, created_at) VALUES (?, ?, ?, ?, ?)",
         (values["title"], values["deadline"], values["budget_cents"], values["notes"], ts(now())),
     )
+    _save_goal_needs(db, cur.lastrowid, needs)
     db.commit()
     flash(f"Added {values['title']}. Now add the work it needs.")
     return redirect(_back(url_for(".gantt")) + f"#goal-{cur.lastrowid}")
@@ -137,11 +186,13 @@ def edit_goal(goal_id):
         form = {**goal, "budget": plain_amount(goal["budget_cents"])}
         return _goal_page_full(goal, form, [])
     values, errors = _goal_form(request.form)
-    if errors:
-        return _goal_page(goal, values, errors, 400)
+    needs, need_errors = _goal_needs(request.form, goal_id)
+    if errors or need_errors:
+        return _goal_page(goal, values, errors + need_errors, 400, needs)
     db = get_db()
     db.execute("UPDATE goals SET title = ?, deadline = ?, budget_cents = ?, notes = ? WHERE id = ?",
                (values["title"], values["deadline"], values["budget_cents"], values["notes"], goal_id))
+    _save_goal_needs(db, goal_id, needs)
     db.commit()
     flash(f"Saved {values['title']}.")
     return redirect(_back(url_for(".gantt")))
@@ -163,6 +214,7 @@ def _goal_page_full(goal, form, errors, status=200, pay_form=None, pay_errors=()
                             amount=plain_amount(commitment["open"]))
     return render_template(
         "goal_form.html", goal=goal, form=form, errors=errors, goal_plan=goal_plan, statuses=STATUSES,
+        choices=_goal_choices(goal["id"]), needs=_stored_goal_needs(get_db(), goal["id"]),
         left=left, pay_form=pay_form, pay_errors=pay_errors, commit_form=commit_form or {},
         commit_errors=commit_errors, finance_enabled=ledger.enabled(), paying=commitment,
     ), status
@@ -246,44 +298,72 @@ def _task_form(form, task_id=None):
         if values["started_on"] and values["started_on"] > values["done_on"]:
             errors.append("It can't finish before it started.")
 
-    needs = []
+    needs = {"tasks": [], "goals": []}
+    added_tasks, added_items = [], []
     for raw in form.getlist("needs"):
         try:
             needs_id = int(raw)
         except ValueError:
             continue
         row = db.execute("SELECT title FROM tasks WHERE id = ?", (needs_id,)).fetchone()
+        if row is None or needs_id == task_id:
+            continue
+        if task_id is not None and plan.creates_cycle(db, added_tasks + [(task_id, needs_id)], added_items,
+                                                      replace_task=task_id):
+            errors.append(f"“{row['title']}” already waits for this one, so this one can't wait for it.")
+            continue
+        added_tasks.append((task_id, needs_id))
+        needs["tasks"].append(needs_id)
+    for raw in form.getlist("needs_goal"):
+        try:
+            goal_id = int(raw)
+        except ValueError:
+            continue
+        row = db.execute("SELECT title FROM goals WHERE id = ?", (goal_id,)).fetchone()
         if row is None:
             continue
-        if task_id is not None and plan.would_cycle(db, task_id, needs_id):
-            errors.append(f"“{row['title']}” already needs this one finished first, so it can't wait for it.")
+        item = {"task_id": task_id, "needs_goal_id": goal_id}
+        if goal_id == values["goal_id"] or (task_id is not None and plan.creates_cycle(
+                db, added_tasks, added_items + [item], replace_task=task_id)):
+            errors.append(f"It can't wait for all of “{row['title']}”: that already waits for this task"
+                          + (", or this task is part of it." if goal_id == values["goal_id"] else "."))
             continue
-        needs.append(needs_id)
+        added_items.append(item)
+        needs["goals"].append(goal_id)
     return values, needs, errors
 
 
 def _task_page(task, form, needs, errors, status=200):
     current = _plan()
-    excluded = {task["id"]} if task else set()
     if task:
-        # Anything that (further down) needs this task can't also come before it.
-        stack = list(current["tasks"][task["id"]]["needed_by"])
-        while stack:
-            tid = stack.pop()
-            if tid not in excluded:
-                excluded.add(tid)
-                stack.extend(current["tasks"][tid]["needed_by"])
-    choices = [(g, [t for t in g["tasks"] if t["id"] not in excluded]) for g in current["goals"]]
-    return render_template("task_form.html", task=task, form=form, needs=set(needs), errors=errors,
+        bad_goals, bad_tasks = plan.loop_makers(get_db(), task_id=task["id"])
+    else:  # a new task waits for nothing yet, so only its own big item is out
+        bad_goals, bad_tasks = {form.get("goal_id")}, set()
+    choices = _choices(current, bad_goals, bad_tasks)
+    return render_template("task_form.html", task=task, form=form, needs=needs, errors=errors,
                            goals=current["goals"], choices=choices, statuses=STATUSES,
                            scheduled=current["tasks"].get(task["id"]) if task else None,
                            next_url=_back("")), status
 
 
+def _choices(current, bad_goals, bad_tasks):
+    """What a form may offer to wait for: [(big item, its tasks, whether all of it)]."""
+    return [(g, [t for t in g["tasks"] if t["id"] not in bad_tasks], g["id"] not in bad_goals)
+            for g in current["goals"]]
+
+
 def _save_needs(db, task_id, needs):
     db.execute("DELETE FROM task_deps WHERE task_id = ?", (task_id,))
     db.executemany("INSERT OR IGNORE INTO task_deps (task_id, needs_id) VALUES (?, ?)",
-                   [(task_id, n) for n in needs if n != task_id])
+                   [(task_id, n) for n in needs["tasks"] if n != task_id])
+    db.execute("DELETE FROM item_deps WHERE task_id = ?", (task_id,))
+    db.executemany("INSERT OR IGNORE INTO item_deps (task_id, needs_goal_id) VALUES (?, ?)",
+                   [(task_id, g) for g in needs["goals"]])
+
+
+def _current_needs(db, task_id):
+    return {"tasks": [r[0] for r in db.execute("SELECT needs_id FROM task_deps WHERE task_id = ?", (task_id,))],
+            "goals": [r[0] for r in db.execute("SELECT needs_goal_id FROM item_deps WHERE task_id = ?", (task_id,))]}
 
 
 def _form_echo(values):
@@ -295,7 +375,7 @@ def _form_echo(values):
 def new_task():
     if request.method == "GET":
         form = {"goal_id": request.args.get("goal", type=int), "days": 1, "status": "todo", "pay_at": "start"}
-        return _task_page(None, form, request.args.getlist("needs", type=int), [])
+        return _task_page(None, form, {"tasks": request.args.getlist("needs", type=int), "goals": []}, [])
     values, needs, errors = _task_form(request.form)
     if errors:
         return _task_page(None, _form_echo(values), needs, errors, 400)
@@ -328,7 +408,7 @@ def edit_task(task_id):
     task = _get_task(task_id)
     db = get_db()
     if request.method == "GET":
-        needs = [r["needs_id"] for r in db.execute("SELECT needs_id FROM task_deps WHERE task_id = ?", (task_id,))]
+        needs = _current_needs(db, task_id)
         form = {**task, "cost": plain_amount(task["cost_cents"])}
         return _task_page(task, form, needs, [])
     values, needs, errors = _task_form(request.form, task_id)
@@ -479,10 +559,22 @@ def edit_payment(payment_id):
         form = {**payment, "amount": plain_amount(payment["amount_cents"]), "log": payment["finance"] != "skip"}
         return render_template("payment_form.html", payment=payment, goal=goal, goal_plan=goal_plan, form=form,
                                errors=[], finance_enabled=ledger.enabled())
-    values, errors = _payment_form(request.form, goal["id"])
+    form = request.form
+    if payment["finance"] == "linked":  # amount and day are finance's; only what it's for changes here
+        form = form.copy()
+        form["amount"], form["paid_on"] = plain_amount(payment["amount_cents"]), payment["paid_on"]
+        form["off_balance"] = "1" if payment["off_balance"] else ""
+    values, errors = _payment_form(form, goal["id"])
     if errors:
         return render_template("payment_form.html", payment=payment, goal=goal, goal_plan=goal_plan,
                                form=_pay_echo(values), errors=errors, finance_enabled=ledger.enabled()), 400
+    if payment["finance"] == "linked":
+        db = get_db()
+        db.execute("UPDATE payments SET task_id = ?, commitment_id = ?, what = ? WHERE id = ?",
+                   (values["task_id"], values["commitment_id"], values["what"], payment_id))
+        db.commit()
+        flash("Saved the payment.")
+        return redirect(url_for(".edit_goal", goal_id=goal["id"]) + "#money")
     db = get_db()
     db.execute(
         """UPDATE payments SET task_id = ?, commitment_id = ?, paid_on = ?, amount_cents = ?, what = ?,
@@ -509,6 +601,47 @@ def edit_payment(payment_id):
     return redirect(url_for(".edit_goal", goal_id=goal["id"]) + "#money")
 
 
+def _linkable(db, transactions):
+    """Finance transactions no payment here is: not linked yet, not logged from here."""
+    linked = {r[0] for r in db.execute("SELECT finance_tx_id FROM payments WHERE finance_tx_id IS NOT NULL")}
+    return [t for t in transactions if t["id"] not in linked and not t["api_key"] and t["amount_cents"]]
+
+
+@bp.route("/goals/<int:goal_id>/link", methods=["GET", "POST"])
+def link_payments(goal_id):
+    """Pick payments already in finance (logged on Telegram, say) that belong to this big item."""
+    goal = _get_goal(goal_id)
+    db = get_db()
+    transactions, problem = ledger.finance_transactions()
+    if problem:
+        flash(f"Can't list finance's payments: {problem}.")
+        return redirect(url_for(".edit_goal", goal_id=goal_id) + "#money")
+    gone = ledger.refresh_linked(db, transactions)
+    linkable = _linkable(db, transactions)
+    goal_plan = next(g for g in _plan()["goals"] if g["id"] == goal_id)
+    if request.method == "GET":
+        return render_template("link_payments.html", goal=goal, goal_plan=goal_plan, transactions=linkable,
+                               gone=gone, category=current_app.config["FINANCE_CATEGORY"])
+    chosen = {int(raw) for raw in request.form.getlist("tx") if raw.isdigit()}
+    task_id = _optional_id(request.form, "task_id", _goal_task_ids(db, goal_id))
+    commitments = {c["id"]: c for c in goal_plan["commitments"]}
+    commitment_id = _optional_id(request.form, "commitment_id", set(commitments))
+    if commitment_id and task_id is None:
+        task_id = commitments[commitment_id]["task_id"]
+    picked = [t for t in linkable if t["id"] in chosen]
+    for t in picked:
+        db.execute(
+            """INSERT INTO payments (goal_id, task_id, commitment_id, paid_on, amount_cents, what, off_balance, finance,
+                   finance_tx_id, user_name, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'linked', ?, ?, ?)""",
+            (goal_id, task_id, commitment_id, t["occurred_at"][:10], t["amount_cents"],
+             t["comment"] or "From finance", int(t["off_balance"]), t["id"], t["user_name"], ledger.stamp()),
+        )
+    db.commit()
+    flash(f"Linked {len(picked)} payment{'' if len(picked) == 1 else 's'} from finance." if picked
+          else "Nothing picked.")
+    return redirect(url_for(".edit_goal", goal_id=goal_id) + "#money")
+
+
 @bp.post("/payments/<int:payment_id>/retry")
 def retry_payment(payment_id):
     payment = _get_payment(payment_id)
@@ -528,7 +661,8 @@ def delete_payment(payment_id):
     else:
         db.execute("DELETE FROM payments WHERE id = ?", (payment_id,))
         db.commit()
-        flash("Deleted the payment" + (" here and in finance." if payment["finance_key"] else "."))
+        flash("Unlinked it; it stays in finance." if payment["finance"] == "linked"
+              else "Deleted the payment" + (" here and in finance." if payment["finance_key"] else "."))
     return redirect(url_for(".edit_goal", goal_id=payment["goal_id"]) + "#money")
 
 
@@ -683,6 +817,45 @@ def api_link(task_id):
         if plan.would_cycle(db, task_id, needs_id):
             return _json_error("That would make a loop: the other task already waits for this one.")
         db.execute("INSERT OR IGNORE INTO task_deps (task_id, needs_id) VALUES (?, ?)", (task_id, needs_id))
+    db.commit()
+    return api_plan()
+
+
+@bp.post("/api/item-deps")
+def api_add_item_dep():
+    """{"goal_id" or "task_id", "needs_goal_id" or "needs_task_id"}: the first waits for the second.
+    Task waiting for task goes through /api/tasks/<id>/needs."""
+    body = request.get_json(silent=True) or {}
+    ids = {}
+    for field in ("goal_id", "task_id", "needs_goal_id", "needs_task_id"):
+        value = body.get(field)
+        try:
+            ids[field] = int(value) if value not in (None, "") else None
+        except (TypeError, ValueError):
+            return _json_error("Which items?")
+    if (ids["goal_id"] is None) == (ids["task_id"] is None) or             (ids["needs_goal_id"] is None) == (ids["needs_task_id"] is None) or             (ids["task_id"] and ids["needs_task_id"]):
+        return _json_error("Which items?")
+    if ids["goal_id"]:
+        _get_goal(ids["goal_id"])
+    else:
+        _get_task(ids["task_id"])
+    if ids["needs_goal_id"]:
+        _get_goal(ids["needs_goal_id"])
+    else:
+        _get_task(ids["needs_task_id"])
+    db = get_db()
+    if plan.creates_cycle(db, item_deps=[ids]):
+        return _json_error("That would make a loop: it's part of it, or it already waits for this.")
+    db.execute("INSERT OR IGNORE INTO item_deps (goal_id, task_id, needs_goal_id, needs_task_id) VALUES (?, ?, ?, ?)",
+               (ids["goal_id"], ids["task_id"], ids["needs_goal_id"], ids["needs_task_id"]))
+    db.commit()
+    return api_plan()
+
+
+@bp.post("/api/item-deps/<int:dep_id>/delete")
+def api_delete_item_dep(dep_id):
+    db = get_db()
+    db.execute("DELETE FROM item_deps WHERE id = ?", (dep_id,))
     db.commit()
     return api_plan()
 

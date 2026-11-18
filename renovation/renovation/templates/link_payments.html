@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Link payments{% endblock %}
+{% block eyebrow %}{{ goal.title }}{% endblock %}
+{% block content %}
+<div class="toolbar"><h1>Link payments from finance</h1></div>
+
+{% if gone %}
+<p class="flash error">{{ gone | length }} linked payment{{ '' if gone | length == 1 else 's' }} no longer {{ 'is' if gone | length == 1 else 'are' }} in finance
+  under {{ category }}: {% for p in gone %}{{ p.what }} ({{ p.amount_cents | eur }}, {{ p.paid_on | day }}){{ ', ' if not loop.last }}{% endfor %}.
+  Unlink {{ 'it' if gone | length == 1 else 'them' }} on the big item, or link the moved entry again.</p>
+{% endif %}
+
+<section class="card">
+  <p class="muted small note">Payments for the house already in finance under <strong>{{ category }}</strong>, logged some other
+    way (Telegram, the portal, an import). Tick the ones that belong to <strong>{{ goal.title }}</strong>. They count as paid here and
+    aren't logged again; unlinking never deletes anything in finance. Payments recorded here don't show up: they're linked already.</p>
+  {% if transactions %}
+  <form method="post" class="stack">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <div class="table-wrap">
+    <table class="stack-table link-table">
+      <thead><tr><th></th><th>Day</th><th>Comment</th><th>Who</th><th class="r">Amount</th></tr></thead>
+      <tbody>
+      {% for t in transactions %}
+        <tr>
+          <td><input type="checkbox" name="tx" value="{{ t.id }}" id="tx-{{ t.id }}" aria-label="Link {{ t.comment or 'this payment' }}"></td>
+          <td class="nowrap"><label for="tx-{{ t.id }}">{{ t.occurred_at[:10] | day }}</label></td>
+          <td><label for="tx-{{ t.id }}">{{ t.comment or '–' }}</label>
+            {% if t.off_balance %}<span class="badge" title="Paid outside our accounts">outside</span>{% endif %}</td>
+          <td class="muted">{{ t.user_name or '' }}</td>
+          <td class="r nowrap" data-label="Amount">{{ t.amount_cents | eur }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    <div class="form-grid">
+      <label>For the task
+        <select name="task_id">
+          <option value="">– the whole item –</option>
+          {% for t in goal_plan.tasks %}<option value="{{ t.id }}">{{ t.title }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Towards a commitment
+        <select name="commitment_id">
+          <option value="">– none –</option>
+          {% for c in goal_plan.commitments %}<option value="{{ c.id }}">{{ c.what }} ({{ c.open | eur }} open)</option>{% endfor %}
+        </select>
+      </label>
+    </div>
+    <div class="row">
+      <button type="submit" class="primary">Link the ticked payments</button>
+      <a class="btn" href="{{ url_for('views.edit_goal', goal_id=goal.id) }}#money">Cancel</a>
+    </div>
+  </form>
+  {% else %}
+  <p class="empty">Nothing to link: every payment under {{ category }} in finance is linked to a big item already.</p>
+  {% endif %}
+</section>
+{% endblock %}

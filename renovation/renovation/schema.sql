@@ -49,7 +49,8 @@ CREATE INDEX IF NOT EXISTS commitments_goal ON commitments (goal_id);
 
 -- Money that went out. Logged in finance as an expense (finance = 'logged')
 -- under finance_key, unless it was there already ('skip'); 'failed' means
--- finance didn't answer and it still has to be sent.
+-- finance didn't answer and it still has to be sent; 'linked' is a payment
+-- logged in finance some other way, picked from its list (finance_tx_id).
 CREATE TABLE IF NOT EXISTS payments (
     id            INTEGER PRIMARY KEY,
     goal_id       INTEGER NOT NULL REFERENCES goals(id) ON DELETE CASCADE,
@@ -59,13 +60,30 @@ CREATE TABLE IF NOT EXISTS payments (
     amount_cents  INTEGER NOT NULL CHECK (amount_cents <> 0),  -- negative: a refund
     what          TEXT NOT NULL DEFAULT '',
     off_balance   INTEGER NOT NULL DEFAULT 0,      -- paid outside our accounts (a loan paid to the seller)
-    finance       TEXT NOT NULL DEFAULT 'skip' CHECK (finance IN ('logged', 'failed', 'skip')),
+    finance       TEXT NOT NULL DEFAULT 'skip' CHECK (finance IN ('logged', 'failed', 'skip', 'linked')),
     finance_key   TEXT UNIQUE,
+    finance_tx_id INTEGER UNIQUE,                  -- 'linked': the finance transaction it is
     finance_error TEXT,
     user_name     TEXT,
     created_at    TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS payments_goal ON payments (goal_id);
+
+-- Waiting that involves a whole big item: a big item (all its tasks) or a
+-- task waits for a big item (all its tasks finished) or for one task.
+-- Task waiting for task is task_deps.
+CREATE TABLE IF NOT EXISTS item_deps (
+    id            INTEGER PRIMARY KEY,
+    goal_id       INTEGER REFERENCES goals(id) ON DELETE CASCADE,
+    task_id       INTEGER REFERENCES tasks(id) ON DELETE CASCADE,
+    needs_goal_id INTEGER REFERENCES goals(id) ON DELETE CASCADE,
+    needs_task_id INTEGER REFERENCES tasks(id) ON DELETE CASCADE,
+    CHECK ((goal_id IS NULL) <> (task_id IS NULL)),
+    CHECK ((needs_goal_id IS NULL) <> (needs_task_id IS NULL)),
+    CHECK (task_id IS NULL OR needs_task_id IS NULL)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS item_deps_unique ON item_deps
+    (COALESCE(goal_id, 0), COALESCE(task_id, 0), COALESCE(needs_goal_id, 0), COALESCE(needs_task_id, 0));
 
 -- task_id can't start before needs_id is finished.
 CREATE TABLE IF NOT EXISTS task_deps (

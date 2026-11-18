@@ -93,7 +93,7 @@ def test_add_and_edit_task(logged_in, app):
         "csrf": token, "title": "Walls", "goal_id": goal, "days": "10", "needs": [str(task["id"])], "status": "todo",
     })
     assert response.status_code == 400
-    assert "already needs this one" in response.get_data(as_text=True)
+    assert "already waits for this one" in response.get_data(as_text=True)
 
     response = logged_in.post(f"/tasks/{walls}", data={
         "csrf": token, "title": "Walls", "goal_id": goal, "days": "12", "status": "doing", "next": "/upcoming",

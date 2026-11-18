@@ -78,9 +78,11 @@
     var origin = first - 7;
     origin -= weekday(origin);  // start on a Monday so weekend shading lines up
     var pad = zoom === "month" ? 90 : zoom === "week" ? 42 : 21;
-    var rows = [], tasks = {}, rowOf = {};
+    var rows = [], tasks = {}, rowOf = {}, goalRowOf = {}, goals = {};
     data.tasks.forEach(function (t) { tasks[t.id] = t; });
     data.goals.forEach(function (g) {
+      goals[g.id] = g;
+      goalRowOf[g.id] = rows.length;
       rows.push({ kind: "goal", goal: g, count: 0 });
       var head = rows[rows.length - 1];
       data.tasks.forEach(function (t) {
@@ -90,7 +92,8 @@
         head.count += 1;
       });
     });
-    return { today: today, origin: origin, last: last + pad, px: px, rows: rows, tasks: tasks, rowOf: rowOf };
+    return { today: today, origin: origin, last: last + pad, px: px, rows: rows, tasks: tasks, rowOf: rowOf,
+             goals: goals, goalRowOf: goalRowOf };
   }
 
   function x(n) { return (n - view.origin) * view.px; }
@@ -191,27 +194,54 @@
       '<span class="g-bar-label">' + esc(t.title) + "</span>" + handles + dot + "</a></div></div>";
   }
 
+  function route(x1, y1, x2, y2) {
+    if (x2 - x1 >= 14) return "M" + x1 + " " + y1 + "H" + (x1 + 7) + "V" + y2 + "H" + (x2 - 2);
+    // Not enough room: go round, between the rows.
+    var between = y2 > y1 ? y2 - ROW / 2 : y2 + ROW / 2;
+    return "M" + x1 + " " + y1 + "H" + (x1 + 7) + "V" + between + "H" + (x2 - 9) + "V" + y2 + "H" + (x2 - 2);
+  }
+
+  function arrow(cls, attrs, title, d) {
+    return '<g class="' + cls + '" ' + attrs + '><title>' + esc(title) + " (click to remove)</title>" +
+      '<path class="g-link-hit" d="' + d + '"/><path class="g-link-line" d="' + d + '" marker-end="url(#g-arrow)"/></g>';
+  }
+
+  // Where a link leaves what's waited for: the end of a task's bar, or of a big item's span.
+  function endPoint(goalId, taskId) {
+    if (taskId) {
+      var t = view.tasks[taskId];
+      return t && view.rowOf[taskId] !== undefined ? { x: x(dayNum(t.end) + 1), y: view.rowOf[taskId] * ROW + ROW / 2, title: t.title } : null;
+    }
+    var g = view.goals[goalId];
+    return g && g.end ? { x: x(dayNum(g.end) + 1), y: view.goalRowOf[goalId] * ROW + ROW / 2, title: g.title + " (all of it)" } : null;
+  }
+
   function links() {
     var paths = [];
     data.tasks.forEach(function (t) {
+      var y2 = view.rowOf[t.id] * ROW + ROW / 2, x2 = x(dayNum(t.start));
       t.needs.forEach(function (needId) {
-        var n = view.tasks[needId];
-        if (!n || view.rowOf[needId] === undefined) return;
-        var x1 = x(dayNum(n.end) + 1), y1 = view.rowOf[needId] * ROW + ROW / 2;
-        var x2 = x(dayNum(t.start)), y2 = view.rowOf[t.id] * ROW + ROW / 2;
-        var d;
-        if (x2 - x1 >= 14) {
-          var mid = x1 + 7;
-          d = "M" + x1 + " " + y1 + "H" + mid + "V" + y2 + "H" + (x2 - 2);
-        } else {
-          // Not enough room: go round, between the rows.
-          var between = y2 > y1 ? y2 - ROW / 2 : y2 + ROW / 2;
-          d = "M" + x1 + " " + y1 + "H" + (x1 + 7) + "V" + between + "H" + (x2 - 9) + "V" + y2 + "H" + (x2 - 2);
-        }
+        var from = endPoint(null, needId);
+        if (!from) return;
         var cls = "g-link" + (t.blocked_by.indexOf(needId) >= 0 ? "" : " met") + (t.flag === "late" ? " late" : "");
-        paths.push('<g class="' + cls + '" data-task="' + t.id + '" data-needs="' + needId + '">' +
-          '<title>' + esc(t.title) + " waits for " + esc(n.title) + " (click to remove)</title>" +
-          '<path class="g-link-hit" d="' + d + '"/><path class="g-link-line" d="' + d + '" marker-end="url(#g-arrow)"/></g>');
+        paths.push(arrow(cls, 'data-task="' + t.id + '" data-needs="' + needId + '"',
+          t.title + " waits for " + from.title, route(from.x, from.y, x2, y2)));
+      });
+      t.item_needs.forEach(function (dep) {
+        var from = endPoint(dep.goal, dep.task);
+        if (!from) return;
+        paths.push(arrow("g-link item" + (dep.finished ? " met" : ""), 'data-item="' + dep.id + '"',
+          t.title + " waits for " + from.title, route(from.x, from.y, x2, y2)));
+      });
+    });
+    data.goals.forEach(function (g) {
+      if (!g.start) return;
+      var y2 = view.goalRowOf[g.id] * ROW + ROW / 2, x2 = x(dayNum(g.start));
+      g.item_needs.forEach(function (dep) {
+        var from = endPoint(dep.goal, dep.task);
+        if (!from) return;
+        paths.push(arrow("g-link item" + (dep.finished ? " met" : "") + (g.late ? " late" : ""), 'data-item="' + dep.id + '"',
+          g.title + " waits for " + from.title, route(from.x, from.y, x2, y2)));
       });
     });
     return paths.join("");
@@ -291,6 +321,19 @@
   var drag = null;
   var suppressClick = false;
 
+  // What a dragged link would land on: a task's bar or a big item's row, looking
+  // past the arrows and lines drawn over them.
+  function dropTarget(event) {
+    var found = document.elementsFromPoint(event.clientX, event.clientY);
+    for (var i = 0; i < found.length; i++) {
+      var bar = found[i].closest(".g-bar");
+      if (bar) return { bar: bar };
+      var row = found[i].closest(".g-row-goal");
+      if (row) return { goalRow: row };
+    }
+    return {};
+  }
+
   function overlayPoint(event) {
     var overlay = root.querySelector(".g-overlay").getBoundingClientRect();
     return { x: event.clientX - overlay.left, y: event.clientY - overlay.top };
@@ -342,14 +385,16 @@
       line.setAttribute("x1", drag.from.x); line.setAttribute("y1", drag.from.y);
       line.setAttribute("x2", p.x); line.setAttribute("y2", p.y);
       line.classList.add("on");
-      var over = document.elementFromPoint(event.clientX, event.clientY);
-      var target = over && over.closest(".g-bar");
-      root.querySelectorAll(".g-bar.link-target").forEach(function (b) { b.classList.remove("link-target"); });
+      var hit = dropTarget(event), target = hit.bar, goalRow = hit.goalRow;
+      root.querySelectorAll(".link-target").forEach(function (b) { b.classList.remove("link-target"); });
       if (target && +target.getAttribute("data-id") !== drag.id) {
         target.classList.add("link-target");
         say(view.tasks[+target.getAttribute("data-id")].title + " waits for " + view.tasks[drag.id].title);
+      } else if (goalRow) {
+        goalRow.classList.add("link-target");
+        say("All of " + view.goals[+goalRow.id.slice(5)].title + " waits for " + view.tasks[drag.id].title);
       } else {
-        say("Drop on the task that has to wait for " + view.tasks[drag.id].title);
+        say("Drop on the task (or big item) that has to wait for " + view.tasks[drag.id].title);
       }
     }
   });
@@ -381,8 +426,13 @@
       var g = data.goals.filter(function (goal) { return goal.id === d.id; })[0];
       post("/api/goals/" + d.id + "/deadline", { deadline: iso(dayNum(g.deadline) + days) }, "Moved the deadline of " + g.title + ".");
     } else if (d.mode === "link") {
-      var over = document.elementFromPoint(event.clientX, event.clientY);
-      var target = over && over.closest(".g-bar");
+      var hit = dropTarget(event), target = hit.bar, goalRow = hit.goalRow;
+      if (goalRow) {
+        var goal = view.goals[+goalRow.id.slice(5)];
+        post("/api/item-deps", { goal_id: goal.id, needs_task_id: d.id },
+          "All of " + goal.title + " now waits for " + view.tasks[d.id].title + ".");
+        return;
+      }
       var targetId = target ? +target.getAttribute("data-id") : null;
       if (!targetId || targetId === d.id) { render(true); say(""); return; }
       post("/api/tasks/" + targetId + "/needs", { needs_id: d.id },
@@ -404,6 +454,12 @@
       return;
     }
     var link = event.target.closest(".g-link");
+    if (link && link.hasAttribute("data-item")) {
+      if (window.confirm("Remove this link? " + link.querySelector("title").textContent.replace(" (click to remove)", "") + ".")) {
+        post("/api/item-deps/" + link.getAttribute("data-item") + "/delete", {}, "Removed the link.");
+      }
+      return;
+    }
     if (link) {
       var task = view.tasks[+link.getAttribute("data-task")], needs = view.tasks[+link.getAttribute("data-needs")];
       if (window.confirm("Remove the link? " + task.title + " would no longer wait for " + needs.title + ".")) {

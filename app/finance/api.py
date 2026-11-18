@@ -1,6 +1,7 @@
 """JSON for companion apps on the same server (the renovation planner).
 
     GET    /api/v1/liquidity?until=YYYY-MM-DD&category=hisa
+    GET    /api/v1/transactions?category=hisa   expenses in a category, to link to the planner
     PUT    /api/v1/transactions/<key>   log or change an expense (a renovation payment)
     DELETE /api/v1/transactions/<key>   remove it again
 
@@ -95,6 +96,24 @@ def liquidity_view():
     if request.args.get("category", "").strip():
         body["category_spend"] = _category_spend(db, request.args["category"])
     return jsonify(body)
+
+
+@bp.get("/transactions")
+def list_transactions():
+    """Expenses in one category, newest first, each with the API key it was
+    logged under (None when it came from anywhere else)."""
+    db = get_db()
+    key = categories.lookup(db, request.args.get("category", ""))
+    if not key or db.execute("SELECT 1 FROM categories WHERE key = ?", (key,)).fetchone() is None:
+        return _bad(f"There's no category {request.args.get('category', '')!r} in finance.")
+    rows = db.execute(
+        """SELECT t.id, t.occurred_at, t.amount_cents, t.comment, t.user_name, t.off_balance, e.key AS api_key
+           FROM transactions t LEFT JOIN api_entries e ON e.transaction_id = t.id
+           WHERE t.category = ? AND NOT t.is_income ORDER BY t.occurred_at DESC, t.id DESC LIMIT 2000""",
+        (key,),
+    ).fetchall()
+    return jsonify({"category": key, "transactions": [
+        {**dict(r), "off_balance": bool(r["off_balance"])} for r in rows]})
 
 
 def _bad(message):

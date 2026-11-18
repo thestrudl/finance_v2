@@ -14,6 +14,11 @@ difference between that latest end and the planned end is the slack:
 negative means a deadline will be missed unless something changes ("late"),
 a few days or less means there's no room for delays ("tight").
 
+Waiting can also involve a whole big item: a big item or a task can wait for
+another big item (every task in it finished) or for one task. Waiting big
+items pass it on to every task in them. These links are expanded into task
+links before scheduling, so the passes above handle them like any other.
+
 Days are calendar days: weekends count, as they do for most of our own work.
 """
 from collections import defaultdict
@@ -32,7 +37,58 @@ def load(db):
     deps = [(r["task_id"], r["needs_id"]) for r in db.execute("SELECT task_id, needs_id FROM task_deps")]
     payments = [dict(r) for r in db.execute("SELECT * FROM payments ORDER BY paid_on, id")]
     commitments = [dict(r) for r in db.execute("SELECT * FROM commitments ORDER BY COALESCE(due_on, '9999'), id")]
-    return goals, tasks, deps, payments, commitments
+    item_deps = [dict(r) for r in db.execute("SELECT * FROM item_deps ORDER BY id")]
+    return goals, tasks, deps, payments, commitments, item_deps
+
+
+def expand(tasks, deps, item_deps):
+    """Every (task, needed task) pair: task links as they are, plus those that
+    links involving a big item stand for."""
+    by_goal = defaultdict(list)
+    for t in tasks:
+        by_goal[t["goal_id"]].append(t["id"])
+    edges = set(deps)
+    for d in item_deps:
+        waiting = by_goal[d["goal_id"]] if d["goal_id"] else [d["task_id"]]
+        needed = by_goal[d["needs_goal_id"]] if d["needs_goal_id"] else [d["needs_task_id"]]
+        edges.update((a, b) for a in waiting for b in needed if a != b)
+    return edges
+
+
+def has_cycle(goal_ids, tasks, deps, item_deps):
+    """True if anything ends up waiting for itself. Each big item is a start
+    and an end: its tasks wait for its start, its end for its tasks, and its
+    end comes after its start, so even big items without tasks yet can't wait
+    for each other in a circle."""
+    waits = defaultdict(set)
+    for g in goal_ids:
+        waits[("ge", g)].add(("gs", g))
+    for t in tasks:
+        waits[("t", t["id"])].add(("gs", t["goal_id"]))
+        waits[("ge", t["goal_id"])].add(("t", t["id"]))
+    for a, b in deps:
+        waits[("t", a)].add(("t", b))
+    for d in item_deps:
+        node = ("gs", d["goal_id"]) if d["goal_id"] else ("t", d["task_id"])
+        waits[node].add(("ge", d["needs_goal_id"]) if d["needs_goal_id"] else ("t", d["needs_task_id"]))
+    state = {}  # 1: being visited, 2: done
+    for root in list(waits):
+        if root in state:
+            continue
+        stack = [(root, iter(waits[root]))]
+        state[root] = 1
+        while stack:
+            node, children = stack[-1]
+            child = next(children, None)
+            if child is None:
+                state[node] = 2
+                stack.pop()
+            elif state.get(child) == 1:
+                return True
+            elif child not in state:
+                state[child] = 1
+                stack.append((child, iter(waits[child])))
+    return False
 
 
 def _order(tasks, needs, dependents):
@@ -76,12 +132,17 @@ def _money(goals, tasks, payments, commitments):
         owner["committed_open"] = sum(c["open"] for c in owner["commitments"])
 
 
-def schedule(goals, tasks, deps, today, tight_days=3, payments=(), commitments=()):
+def schedule(goals, tasks, deps, today, tight_days=3, payments=(), commitments=(), item_deps=()):
     """{"today", "goals": [goal, ...] by deadline, each with its "tasks", "tasks": {id: task}}."""
     goals = {g["id"]: dict(g) for g in goals}
     tasks = {t["id"]: dict(t) for t in tasks}
-    needs, dependents = defaultdict(list), defaultdict(list)
+    direct = defaultdict(list)
     for task_id, needs_id in deps:
+        if task_id in tasks and needs_id in tasks:
+            direct[task_id].append(needs_id)
+    item_deps = [dict(d) for d in item_deps]
+    needs, dependents = defaultdict(list), defaultdict(list)
+    for task_id, needs_id in sorted(expand(tasks.values(), deps, item_deps)):
         if task_id in tasks and needs_id in tasks:
             needs[task_id].append(needs_id)
             dependents[needs_id].append(task_id)
@@ -102,9 +163,9 @@ def schedule(goals, tasks, deps, today, tight_days=3, payments=(), commitments=(
             start = max([today, _day(t["not_before"]) or today, *after])
             end = start + span
         t["start"], t["end"] = start, end
-        t["needs"] = sorted(needs[tid])
+        t["needs"] = sorted(direct[tid])
         t["needed_by"] = sorted(dependents[tid])
-        t["blocked_by"] = [n for n in t["needs"] if tasks[n]["status"] != "done"]
+        t["blocked_by"] = [n for n in needs[tid] if tasks[n]["status"] != "done"]
 
     for tid in reversed(order):
         t = tasks[tid]
@@ -145,30 +206,71 @@ def schedule(goals, tasks, deps, today, tight_days=3, payments=(), commitments=(
         g["late"] = not g["finished"] and g["slack"] < 0
         g["tight"] = not g["finished"] and not g["late"] and any(t["flag"] == "tight" for t in own)
 
+    # Links involving big items, named, on what waits: for the forms, the chart and "Waiting for".
+    for g in goals.values():
+        g["item_needs"] = []
+    for t in tasks.values():
+        t["item_needs"] = []
+    for d in item_deps:
+        owner = goals.get(d["goal_id"]) if d["goal_id"] else tasks.get(d["task_id"])
+        needed = goals.get(d["needs_goal_id"]) if d["needs_goal_id"] else tasks.get(d["needs_task_id"])
+        if owner is None or needed is None:
+            continue
+        d["title"] = needed["title"] + (" (all of it)" if d["needs_goal_id"] else "")
+        d["finished"] = needed["finished"] if d["needs_goal_id"] else needed["status"] == "done"
+        owner["item_needs"].append(d)
+    for t in tasks.values():
+        waiting = [tasks[n]["title"] for n in t["needs"] if tasks[n]["status"] != "done"]
+        for d in goals[t["goal_id"]]["item_needs"] + t["item_needs"]:
+            if not d["finished"] and d["title"] not in waiting:
+                waiting.append(d["title"])
+        t["waiting_for"] = waiting
+
     ordered = sorted(goals.values(), key=lambda g: (g["finished"], g["deadline"], g["id"]))
     return {"today": today, "goals": ordered, "tasks": tasks}
 
 
 def build(db, today, tight_days=3):
-    goals, tasks, deps, payments, commitments = load(db)
-    return schedule(goals, tasks, deps, today, tight_days, payments, commitments)
+    goals, tasks, deps, payments, commitments, item_deps = load(db)
+    return schedule(goals, tasks, deps, today, tight_days, payments, commitments, item_deps)
+
+
+def creates_cycle(db, task_edges=(), item_deps=(), replace_task=None, replace_goal=None):
+    """True if adding these links would make something wait for itself.
+    replace_task / replace_goal: that one's own links are being replaced, so
+    its current ones don't count."""
+    goals, tasks, deps, _, _, items = load(db)
+    if replace_task is not None:
+        deps = [(a, b) for a, b in deps if a != replace_task]
+        items = [d for d in items if d["task_id"] != replace_task]
+    if replace_goal is not None:
+        items = [d for d in items if d["goal_id"] != replace_goal]
+    full = [{"goal_id": None, "task_id": None, "needs_goal_id": None, "needs_task_id": None, **d} for d in item_deps]
+    return has_cycle([g["id"] for g in goals], tasks, list(deps) + list(task_edges), items + full)
+
+
+def loop_makers(db, goal_id=None, task_id=None):
+    """(goal ids, task ids) that this big item or task can't wait for without
+    something ending up waiting for itself: for the forms' choices."""
+    goals, tasks, deps, _, _, items = load(db)
+    goal_ids = [g["id"] for g in goals]
+    if goal_id is not None:
+        items = [d for d in items if d["goal_id"] != goal_id]
+        owner = {"goal_id": goal_id, "task_id": None}
+    else:
+        deps = [(a, b) for a, b in deps if a != task_id]
+        items = [d for d in items if d["task_id"] != task_id]
+        owner = {"goal_id": None, "task_id": task_id}
+    bad_goals = {g for g in goal_ids if has_cycle(
+        goal_ids, tasks, deps, items + [{**owner, "needs_goal_id": g, "needs_task_id": None}])}
+    bad_tasks = {t["id"] for t in tasks if has_cycle(
+        goal_ids, tasks, deps, items + [{**owner, "needs_goal_id": None, "needs_task_id": t["id"]}])}
+    return bad_goals, bad_tasks
 
 
 def would_cycle(db, task_id, needs_id):
-    """True if task_id needing needs_id would make a loop (needs_id already
-    needs task_id, directly or further down)."""
-    if task_id == needs_id:
-        return True
-    stack, seen = [needs_id], set()
-    while stack:
-        current = stack.pop()
-        if current == task_id:
-            return True
-        if current in seen:
-            continue
-        seen.add(current)
-        stack.extend(r["needs_id"] for r in db.execute("SELECT needs_id FROM task_deps WHERE task_id = ?", (current,)))
-    return False
+    """True if task_id waiting for needs_id would make a loop."""
+    return task_id == needs_id or creates_cycle(db, task_edges=[(task_id, needs_id)])
 
 
 def upcoming(plan, horizon=30):
@@ -192,6 +294,10 @@ def upcoming(plan, horizon=30):
     }
 
 
+def _item_json(d):
+    return {"id": d["id"], "goal": d["needs_goal_id"], "task": d["needs_task_id"], "finished": d["finished"]}
+
+
 def to_json(plan):
     """What the Gantt chart draws."""
     def iso(value):
@@ -204,7 +310,7 @@ def to_json(plan):
             "start": iso(g["start"]), "end": iso(g["end"]), "late": g["late"], "tight": g["tight"],
             "finished": g["finished"], "slack": g["slack"], "done": g["done"], "total": g["total"],
             "estimate": g["estimate"], "paid": g["paid"], "committed": g["committed"], "budget": g["budget_cents"],
-            "notes": g["notes"],
+            "notes": g["notes"], "item_needs": [_item_json(d) for d in g["item_needs"]],
         })
         for t in g["tasks"]:
             tasks.append({
@@ -213,5 +319,6 @@ def to_json(plan):
                 "latest_start": iso(t["latest_start"]), "slack": t["slack"], "flag": t["flag"],
                 "needs": t["needs"], "blocked_by": t["blocked_by"], "cost": t["cost_cents"],
                 "paid": t["paid"], "committed": t["committed"], "who": t["who"], "not_before": t["not_before"], "notes": t["notes"],
+                "item_needs": [_item_json(d) for d in t["item_needs"]],
             })
     return {"today": plan["today"].isoformat(), "goals": goals, "tasks": tasks}

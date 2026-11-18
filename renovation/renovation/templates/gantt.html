@@ -43,8 +43,9 @@
   <div id="gantt" class="gantt" data-source="plan-data" tabindex="0" aria-label="Gantt chart of the renovation"></div>
   <p class="gantt-status" role="status" aria-live="polite"></p>
   <p class="muted small gantt-help">Drag a bar to move it, its right edge to make it longer or shorter, and the
-    <span class="dot-sample"></span> at its end onto the task that has to wait for it. Drag a deadline ◆ to move it.
-    Click anything to edit it. Whatever waits for a task moves with it.</p>
+    <span class="dot-sample"></span> at its end onto the task that has to wait for it, or onto a big item's row to make all of
+    it wait. Drag a deadline ◆ to move it. Click anything to edit it; a big item waits for whole items on its own page.
+    Whatever waits for a task moves with it.</p>
 </section>
 <script type="application/json" id="plan-data">{{ plan_json | tojson }}</script>
 {% endif %}

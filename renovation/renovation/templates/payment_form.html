@@ -9,17 +9,17 @@
   {% if payment.finance == 'failed' and payment.finance_error %}<p class="flash error">Not in finance yet: {{ payment.finance_error }}</p>{% endif %}
   <form method="post" class="stack">
     <input type="hidden" name="csrf" value="{{ csrf_token() }}">
-    {{ payment_fields(form, goal_plan, finance_enabled, editing=True) }}
-    <p class="muted small">Logged by {{ payment.user_name or 'someone' }}. Changes here change the entry in finance too.</p>
+    {{ payment_fields(form, goal_plan, finance_enabled, editing=True, linked=payment.finance == 'linked') }}
+    <p class="muted small">Logged by {{ payment.user_name or 'someone' }}.{% if payment.finance_key %} Changes here change the entry in finance too.{% endif %}</p>
     <div class="row">
       <button type="submit" class="primary">Save</button>
       <a class="btn" href="{{ url_for('views.edit_goal', goal_id=goal.id) }}#money">Cancel</a>
     </div>
   </form>
   <form method="post" action="{{ url_for('views.delete_payment', payment_id=payment.id) }}" class="delete-form"
-        data-confirm="Delete this payment{{ ' here and in finance' if payment.finance_key }}?">
+        data-confirm="{{ 'Unlink this payment? It stays in finance.' if payment.finance == 'linked' else 'Delete this payment' ~ (' here and in finance' if payment.finance_key else '') ~ '?' }}">
     <input type="hidden" name="csrf" value="{{ csrf_token() }}">
-    <button type="submit" class="link danger">Delete this payment{{ ' (also in finance)' if payment.finance_key }}</button>
+    <button type="submit" class="link danger">{% if payment.finance == 'linked' %}Unlink it (it stays in finance){% else %}Delete this payment{{ ' (also in finance)' if payment.finance_key }}{% endif %}</button>
   </form>
 </section>
 {% endblock %}
