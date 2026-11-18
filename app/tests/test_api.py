@@ -66,3 +66,83 @@ def test_unknown_category_is_reported_not_created(app):
 def test_until_is_clamped(app):
     body = app.test_client().get("/api/v1/liquidity?until=2040-01-01", headers=AUTH).get_json()
     assert len(body["forecast"]["days"]) <= 3 * 366
+
+
+def put(client, key, **body):
+    payload = {"day": "2026-11-10", "amount_cents": 500_00, "category": "hisa", "comment": "Renovation · Doors",
+               "user_name": "Ben Novak"}
+    payload.update(body)
+    return client.put(f"/api/v1/transactions/{key}", json=payload, headers=AUTH)
+
+
+def transactions(app):
+    with app.app_context():
+        return [dict(r) for r in get_db().execute("SELECT * FROM transactions ORDER BY id")]
+
+
+@pytest.fixture
+def house(app):
+    add_tx(app, "2026-10-01 10:00:00", 1_00, "hisa")  # makes the category exist
+    with app.app_context():
+        db = get_db()
+        db.execute("DELETE FROM transactions")
+        db.commit()
+    return app
+
+
+def test_put_logs_an_expense_once(house):
+    client = house.test_client()
+    first = put(client, "renovation-payment-abc")
+    assert first.status_code == 201 and first.get_json()["created"]
+    again = put(client, "renovation-payment-abc")  # a retry
+    assert again.status_code == 200 and not again.get_json()["created"]
+    rows = transactions(house)
+    assert len(rows) == 1
+    row = rows[0]
+    assert (row["occurred_at"], row["amount_cents"], row["category"], row["is_income"], row["source"]) == (
+        "2026-11-10 12:00:00", 500_00, "hisa", 0, "web")
+    assert (row["comment"], row["user_name"], row["off_balance"]) == ("Renovation · Doors", "Ben Novak", 0)
+
+
+def test_put_changes_and_delete_removes(house):
+    client = house.test_client()
+    put(client, "k1")
+    put(client, "k1", amount_cents=650_00, day="2026-11-18", off_balance=True, comment="changed")
+    row = transactions(house)[0]
+    assert (row["amount_cents"], row["occurred_at"], row["off_balance"], row["comment"]) == (
+        650_00, "2026-11-18 12:00:00", 1, "changed")  # today: the time it was entered (noon in this test)
+    assert client.delete("/api/v1/transactions/k1", headers=AUTH).get_json() == {"deleted": True}
+    assert transactions(house) == []
+    assert client.delete("/api/v1/transactions/k1", headers=AUTH).get_json() == {"deleted": False}
+
+
+def test_put_after_the_transaction_was_deleted_in_finance_logs_it_again(house):
+    client = house.test_client()
+    tx_id = put(client, "k2").get_json()["transaction_id"]
+    with house.app_context():
+        db = get_db()
+        db.execute("DELETE FROM transactions WHERE id = ?", (tx_id,))
+        db.commit()
+    assert put(client, "k2").get_json()["created"]
+    assert len(transactions(house)) == 1
+
+
+@pytest.mark.parametrize("body, message", [
+    ({"day": "soon"}, "day"),
+    ({"amount_cents": 0}, "amount_cents"),
+    ({"amount_cents": "500"}, "amount_cents"),
+    ({"amount_cents": True}, "amount_cents"),
+    ({"category": "nothing"}, "no category"),
+])
+def test_put_validation(house, body, message):
+    response = put(house.test_client(), "k3", **body)
+    assert response.status_code == 400 and message in response.get_json()["error"]
+    assert transactions(house) == []
+
+
+def test_put_rejects_odd_keys_and_needs_the_token(house):
+    client = house.test_client()
+    assert put(client, "bad key!").status_code in (400, 404)
+    response = client.put("/api/v1/transactions/k4", json={}, headers={"Authorization": "Bearer nope"})
+    assert response.status_code == 401
+    assert client.delete("/api/v1/transactions/k4").status_code == 401

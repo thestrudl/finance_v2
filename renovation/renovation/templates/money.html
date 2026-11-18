@@ -8,6 +8,11 @@
 <div class="toolbar"><h1>Money</h1></div>
 
 {% if problem %}<p class="flash">{{ problem }}</p>{% endif %}
+{% if totals.not_logged %}
+<p class="flash error">{{ totals.not_logged | length }} payment{{ '' if totals.not_logged | length == 1 else 's' }} didn't reach finance yet:
+  {% for p in totals.not_logged %}<a href="{{ url_for('views.edit_goal', goal_id=p.goal_id) }}#money">{{ p.what or 'payment' }} ({{ p.amount_cents | eur }})</a>{{ ', ' if not loop.last }}{% endfor %}.
+  Retry there.</p>
+{% endif %}
 
 <section class="tiles">
   {% if result %}
@@ -37,7 +42,8 @@
   <div class="tile">
     <span class="tile-label">Renovation still to pay</span>
     <span class="tile-value">{{ totals.left | eur }}</span>
-    <span class="delta">of {{ totals.estimate | eur }} estimated; {{ totals.paid | eur }} paid</span>
+    <span class="delta">{{ totals.paid | eur }} paid; {{ totals.committed_open | eur }} of it committed</span>
+    <span class="delta">estimated {{ totals.estimate | eur }}</span>
     {% if totals.overdue %}<span class="delta bad wrap">{{ totals.overdue | eur }} of it is due already</span>{% endif %}
   </div>
 </section>
@@ -86,7 +92,7 @@
   {% if plan.goals %}
   <div class="table-wrap">
   <table class="num">
-    <thead><tr><th>Item</th><th>Estimate</th><th>Paid</th><th>Left</th></tr></thead>
+    <thead><tr><th>Item</th><th>Estimate</th><th>Committed</th><th>Paid</th><th>Left</th></tr></thead>
     <tbody>
     {% for g in plan.goals %}
       {% set left = pays | selectattr('goal_id', 'equalto', g.id) | map(attribute='cents') | sum %}
@@ -94,12 +100,13 @@
         <td><a href="{{ url_for('views.edit_goal', goal_id=g.id, next='/money') }}">{{ g.title }}</a>
           {% if not g.cost and g.budget_cents %}<span class="badge">rough</span>{% endif %}</td>
         <td>{{ g.estimate | eur }}</td>
+        <td>{{ g.committed | eur }}</td>
         <td>{{ g.paid | eur }}</td>
         <td>{{ left | eur }}</td>
       </tr>
     {% endfor %}
     </tbody>
-    <tfoot><tr><th>Total</th><th>{{ totals.estimate | eur }}</th><th>{{ totals.paid | eur }}</th><th>{{ totals.left | eur }}</th></tr></tfoot>
+    <tfoot><tr><th>Total</th><th>{{ totals.estimate | eur }}</th><th>{{ totals.committed | eur }}</th><th>{{ totals.paid | eur }}</th><th>{{ totals.left | eur }}</th></tr></tfoot>
   </table>
   </div>
   {% if finance and finance.category_spend %}
@@ -125,8 +132,9 @@
     <tbody>
     {% for p in pays %}
       <tr>
-        <td class="nowrap">{{ p.day | day }}{% if p.overdue %} <span class="badge badge-late">due</span>{% endif %}</td>
-        <td>{% if p.task_id %}<a href="{{ url_for('views.edit_task', task_id=p.task_id, next='/money') }}">{{ p.label }}</a>{% else %}<span class="muted">{{ p.label }}</span>{% endif %}</td>
+        <td class="nowrap">{{ p.day | day }}{% if p.overdue %} <span class="badge badge-late">due</span>{% endif %}
+          {% if p.kind == 'committed' %}<span class="badge badge-done" title="Agreed: a signed offer or order">committed</span>{% endif %}</td>
+        <td>{% if p.kind == 'committed' %}<a href="{{ url_for('views.edit_goal', goal_id=p.goal_id) }}#money">{{ p.label }}</a>{% elif p.task_id %}<a href="{{ url_for('views.edit_task', task_id=p.task_id, next='/money') }}">{{ p.label }}</a>{% else %}<span class="muted">{{ p.label }}</span>{% endif %}</td>
         <td>{{ p.goal }}</td>
         <td class="r nowrap">{{ p.cents | eur }}</td>
       </tr>
@@ -135,8 +143,9 @@
   </table>
   </div>
   {% if result and result.beyond %}<p class="muted small">{{ result.beyond | eur }} falls after the forecast ends.</p>{% endif %}
-  <p class="muted small">A task counts what's left of its estimate, on the day it starts or ends. Marking it done marks it paid;
-    log the real payment in finance as usual. A due payment that hasn't been made counts tomorrow.</p>
+  <p class="muted small">Commitments count what's still open, on their due day. A task's estimate counts only what isn't paid or
+    committed yet, on the day it starts or ends; once it's done, only its open commitments still count. A due payment that
+    hasn't been made counts tomorrow. Record payments on the big item: they're logged in finance from there.</p>
   {% else %}
   <p class="empty">Nothing left to pay. Give tasks an estimate to see them here.</p>
   {% endif %}

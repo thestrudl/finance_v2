@@ -24,7 +24,6 @@ CREATE TABLE IF NOT EXISTS tasks (
     started_on  TEXT,                              -- set when it starts
     done_on     TEXT,                              -- set when it's finished
     cost_cents  INTEGER NOT NULL DEFAULT 0,        -- estimated
-    paid_cents  INTEGER NOT NULL DEFAULT 0,        -- paid so far (a deposit, or all of it)
     pay_at      TEXT NOT NULL DEFAULT 'start' CHECK (pay_at IN ('start', 'end')),
     who         TEXT NOT NULL DEFAULT '',          -- us, or the contractor
     notes       TEXT NOT NULL DEFAULT '',
@@ -32,6 +31,41 @@ CREATE TABLE IF NOT EXISTS tasks (
     updated_at  TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS tasks_goal ON tasks (goal_id);
+
+-- Money agreed but not paid yet: a signed offer, an order. Under a big item,
+-- optionally for one of its tasks. Counts in the cash flow as firm.
+CREATE TABLE IF NOT EXISTS commitments (
+    id           INTEGER PRIMARY KEY,
+    goal_id      INTEGER NOT NULL REFERENCES goals(id) ON DELETE CASCADE,
+    task_id      INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
+    what         TEXT NOT NULL,
+    who          TEXT NOT NULL DEFAULT '',
+    amount_cents INTEGER NOT NULL CHECK (amount_cents > 0),
+    due_on       TEXT,                             -- empty: when the task is paid for, else the deadline
+    notes        TEXT NOT NULL DEFAULT '',
+    created_at   TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS commitments_goal ON commitments (goal_id);
+
+-- Money that went out. Logged in finance as an expense (finance = 'logged')
+-- under finance_key, unless it was there already ('skip'); 'failed' means
+-- finance didn't answer and it still has to be sent.
+CREATE TABLE IF NOT EXISTS payments (
+    id            INTEGER PRIMARY KEY,
+    goal_id       INTEGER NOT NULL REFERENCES goals(id) ON DELETE CASCADE,
+    task_id       INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
+    commitment_id INTEGER REFERENCES commitments(id) ON DELETE SET NULL,
+    paid_on       TEXT NOT NULL,
+    amount_cents  INTEGER NOT NULL CHECK (amount_cents <> 0),  -- negative: a refund
+    what          TEXT NOT NULL DEFAULT '',
+    off_balance   INTEGER NOT NULL DEFAULT 0,      -- paid outside our accounts (a loan paid to the seller)
+    finance       TEXT NOT NULL DEFAULT 'skip' CHECK (finance IN ('logged', 'failed', 'skip')),
+    finance_key   TEXT UNIQUE,
+    finance_error TEXT,
+    user_name     TEXT,
+    created_at    TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS payments_goal ON payments (goal_id);
 
 -- task_id can't start before needs_id is finished.
 CREATE TABLE IF NOT EXISTS task_deps (

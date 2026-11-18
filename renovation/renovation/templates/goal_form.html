@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import flag_badge %}
+{% from "_macros.html" import flag_badge, payment_fields, commitment_fields, finance_badge %}
 {% block title %}{{ goal.title if goal else 'New big item' }}{% endblock %}
 {% block eyebrow %}Big item{% endblock %}
 {% block content %}
@@ -40,7 +40,7 @@
   </div>
   {% if goal_plan.tasks %}
   <div class="table-wrap">
-  <table>
+  <table class="stack-table">
     <thead><tr><th>Task</th><th>When</th><th class="r">Estimate</th></tr></thead>
     <tbody>
     {% for t in goal_plan.tasks %}
@@ -48,8 +48,8 @@
         <td><a href="{{ url_for('views.edit_task', task_id=t.id, next=request.full_path.rstrip('?')) }}">{{ t.title }}</a>
           <span class="muted small">{{ statuses[t.status] | lower }}</span> {{ flag_badge(t) }}
           {% if t.notes %}<p class="notes-text small muted">{{ t.notes }}</p>{% endif %}</td>
-        <td class="nowrap">{{ t.start | day }} – {{ t.end | day }}</td>
-        <td class="r nowrap">{{ t.cost_cents | eur }}</td>
+        <td class="nowrap" data-label="When">{{ t.start | day }} – {{ t.end | day }}</td>
+        <td class="r nowrap" data-label="Estimate">{{ t.cost_cents | eur }}</td>
       </tr>
     {% endfor %}
     </tbody>
@@ -68,4 +68,95 @@
 </section>
 {% endif %}
 </div>
+
+{% if goal_plan %}
+{% set tasks_by_id = {} %}{% for t in goal_plan.tasks %}{% set _ = tasks_by_id.update({t.id: t.title}) %}{% endfor %}
+<section class="card" id="money">
+  <h2>Money</h2>
+  <section class="tiles money-tiles">
+    <div class="tile"><span class="tile-label">Estimate</span><span class="tile-value small-value">{{ goal_plan.estimate | eur }}</span>
+      <span class="delta">{{ 'from its tasks' if goal_plan.cost else ('rough budget' if goal.budget_cents else 'not priced yet') }}</span></div>
+    <div class="tile"><span class="tile-label">Committed</span><span class="tile-value small-value">{{ goal_plan.committed | eur }}</span>
+      <span class="delta">{{ goal_plan.committed_open | eur }} of it still open</span></div>
+    <div class="tile"><span class="tile-label">Paid</span><span class="tile-value small-value">{{ goal_plan.paid | eur }}</span>
+      <span class="delta">{{ goal_plan.payments | length }} payment{{ '' if goal_plan.payments | length == 1 else 's' }}</span></div>
+    <div class="tile"><span class="tile-label">Still to pay</span><span class="tile-value small-value">{{ left | eur }}</span>
+      <span class="delta">expected total {{ (goal_plan.paid + left) | eur }}</span></div>
+  </section>
+
+  <div class="section-title-row"><h3>Committed to pay</h3></div>
+  {% if goal_plan.commitments %}
+  <div class="table-wrap">
+  <table class="stack-table">
+    <thead><tr><th>What</th><th>Task</th><th>Due</th><th class="r">Agreed</th><th class="r">Paid</th><th class="r">Open</th><th></th></tr></thead>
+    <tbody>
+    {% for c in goal_plan.commitments %}
+      <tr>
+        <td><a href="{{ url_for('views.edit_commitment', commitment_id=c.id) }}">{{ c.what }}</a>{% if c.who %} <span class="muted small">{{ c.who }}</span>{% endif %}
+          {% if c.notes %}<p class="notes-text small muted">{{ c.notes }}</p>{% endif %}</td>
+        <td data-label="Task">{{ tasks_by_id.get(c.task_id, '–') }}</td>
+        <td class="nowrap" data-label="Due">{{ c.due_on | day if c.due_on else '–' }}</td>
+        <td class="r nowrap" data-label="Agreed">{{ c.amount_cents | eur }}</td>
+        <td class="r nowrap" data-label="Paid">{{ c.paid | eur }}</td>
+        <td class="r nowrap" data-label="Open">{% if c.open %}{{ c.open | eur }}{% else %}<span class="badge badge-done">paid</span>{% endif %}</td>
+        <td class="r nowrap">{% if c.open %}<a class="small-btn" href="{{ url_for('views.edit_goal', goal_id=goal.id, commitment=c.id) }}#pay">Pay</a>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">Nothing committed yet. Add signed offers and orders here: they count as firm in the cash flow.</p>
+  {% endif %}
+  <details class="money-form" {% if commit_errors %}open{% endif %}>
+    <summary>Add a commitment</summary>
+    {% for e in commit_errors %}<p class="flash error">{{ e }}</p>{% endfor %}
+    <form method="post" action="{{ url_for('views.add_commitment', goal_id=goal.id) }}" class="stack">
+      <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+      {{ commitment_fields(commit_form, goal_plan) }}
+      <button type="submit" class="primary">Add commitment</button>
+    </form>
+  </details>
+
+  <div class="section-title-row money-gap"><h3>Paid</h3></div>
+  {% if goal_plan.payments %}
+  <div class="table-wrap">
+  <table class="stack-table">
+    <thead><tr><th>Day</th><th>What</th><th>Task</th><th class="r">Amount</th><th>Finance</th></tr></thead>
+    <tbody>
+    {% for p in goal_plan.payments | reverse %}
+      <tr>
+        <td class="nowrap">{{ p.paid_on | day }}</td>
+        <td><a href="{{ url_for('views.edit_payment', payment_id=p.id) }}">{{ p.what or 'Payment' }}</a>
+          {% if p.off_balance %}<span class="badge" title="Paid outside our accounts">outside</span>{% endif %}
+          {% if p.user_name %}<span class="muted small">{{ p.user_name }}</span>{% endif %}</td>
+        <td data-label="Task">{{ tasks_by_id.get(p.task_id, '–') }}</td>
+        <td class="r nowrap" data-label="Amount">{{ p.amount_cents | eur }}</td>
+        <td class="nowrap">{{ finance_badge(p) }}
+          {% if p.finance == 'failed' %}
+          <form method="post" action="{{ url_for('views.retry_payment', payment_id=p.id) }}" class="inline">
+            <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+            <button type="submit" class="link">Retry</button>
+          </form>
+          {% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">No payments yet.</p>
+  {% endif %}
+  <details class="money-form" id="pay" {% if pay_errors or paying %}open{% endif %}>
+    <summary>Record a payment</summary>
+    {% if paying %}<p class="muted small">Paying towards <strong>{{ paying.what }}</strong>: {{ paying.open | eur }} still open.</p>{% endif %}
+    {% for e in pay_errors %}<p class="flash error">{{ e }}</p>{% endfor %}
+    <form method="post" action="{{ url_for('views.add_payment', goal_id=goal.id) }}" class="stack">
+      <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+      {{ payment_fields(pay_form, goal_plan, finance_enabled) }}
+      <button type="submit" class="primary">Record payment</button>
+    </form>
+  </details>
+</section>
+{% endif %}
 {% endblock %}

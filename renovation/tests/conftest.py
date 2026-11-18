@@ -89,9 +89,12 @@ def add_task(app, goal_id, title, days=1, needs=(), cost=0, paid=0, pay_at="star
         db = get_db()
         cur = db.execute(
             """INSERT INTO tasks (goal_id, title, days, not_before, status, started_on, done_on, cost_cents,
-                   paid_cents, pay_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'x', 'x')""",
-            (goal_id, title, days, not_before, status, started_on, done_on, cost, paid, pay_at),
+                   pay_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'x', 'x')""",
+            (goal_id, title, days, not_before, status, started_on, done_on, cost, pay_at),
         )
+        if paid:
+            db.execute("""INSERT INTO payments (goal_id, task_id, paid_on, amount_cents, created_at)
+                          VALUES (?, ?, '2026-11-01', ?, 'x')""", (goal_id, cur.lastrowid, paid))
         for n in needs:
             db.execute("INSERT INTO task_deps (task_id, needs_id) VALUES (?, ?)", (cur.lastrowid, n))
         db.commit()

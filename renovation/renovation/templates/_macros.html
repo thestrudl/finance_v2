@@ -29,7 +29,7 @@
       <span>{{ t.start | day }} ({{ relative_day(t.start) }}), {{ t.days | days_word }}</span>
     {% endif %}
     {% if t.who %}<span>{{ t.who }}</span>{% endif %}
-    {% if t.cost_cents %}<span>{{ t.cost_cents | eur }}{% if t.paid_cents %}, {{ t.paid_cents | eur }} paid{% endif %}</span>{% endif %}
+    {% if t.cost_cents or t.paid %}<span>{{ t.cost_cents | eur }}{% if t.paid %}, {{ t.paid | eur }} paid{% endif %}{% if t.committed_open %}, {{ t.committed_open | eur }} committed{% endif %}</span>{% endif %}
   </div>
   {% if t.blocked_by %}
   <div class="task-meta waiting">Waiting for:
@@ -111,3 +111,55 @@
   {{ task_section('Coming up in ' ~ upcoming.horizon ~ ' days', upcoming.soon, plan, statuses, empty='Nothing else in the next ' ~ upcoming.horizon ~ ' days.') }}
   {{ goal_list(plan) }}
 {% endmacro %}
+
+{% macro payment_fields(form, goal_plan, finance_enabled, editing=False) %}
+  <div class="form-grid">
+    <label>Amount (€) <input name="amount" value="{{ form.amount or '' }}" inputmode="decimal" required></label>
+    <label>Paid on <input type="date" name="paid_on" value="{{ form.paid_on or '' }}" required></label>
+    <label class="span-2">What <input name="what" value="{{ form.what or '' }}" placeholder="e.g. Deposit, materials, final invoice"></label>
+    <label>For the task
+      <select name="task_id">
+        <option value="">– the whole item –</option>
+        {% for t in goal_plan.tasks %}<option value="{{ t.id }}" {% if form.task_id == t.id %}selected{% endif %}>{{ t.title }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Towards a commitment
+      <select name="commitment_id">
+        <option value="">– none –</option>
+        {% for c in goal_plan.commitments %}<option value="{{ c.id }}" {% if form.commitment_id == c.id %}selected{% endif %}>{{ c.what }} ({{ c.open | eur }} open)</option>{% endfor %}
+      </select>
+    </label>
+  </div>
+  <label class="check"><input type="checkbox" name="off_balance" value="1" {% if form.off_balance %}checked{% endif %}>
+    Paid outside our accounts (a loan or gift paid straight to the seller)</label>
+  {% if finance_enabled %}
+  <label class="check"><input type="checkbox" name="log" value="1" {% if form.log %}checked{% endif %}>
+    {{ 'Keep it in finance' if editing else 'Log it in finance' }}
+    <span class="muted small">untick if it's already logged there, e.g. through Telegram</span></label>
+  {% else %}
+  <p class="muted small">Payments aren't logged in finance: set FINANCE_API_TOKEN and RENOVATION_FINANCE_CATEGORY to turn that on.</p>
+  {% endif %}
+{% endmacro %}
+
+{% macro commitment_fields(form, goal_plan) %}
+  <div class="form-grid">
+    <label class="span-2">What <input name="what" value="{{ form.what or '' }}" required placeholder="e.g. Parquet, signed offer"></label>
+    <label>Who <input name="who" value="{{ form.who or '' }}" placeholder="the contractor or shop"></label>
+    <label>Amount (€) <input name="amount" value="{{ form.amount or '' }}" inputmode="decimal" required></label>
+    <label title="Empty: when its task is paid for, or else the deadline">Due on <input type="date" name="due_on" value="{{ form.due_on or '' }}"></label>
+    <label>For the task
+      <select name="task_id">
+        <option value="">– the whole item –</option>
+        {% for t in goal_plan.tasks %}<option value="{{ t.id }}" {% if form.task_id == t.id %}selected{% endif %}>{{ t.title }}</option>{% endfor %}
+      </select>
+    </label>
+    <label class="span-2">Notes <textarea name="notes" rows="3" placeholder="Terms, what's included, the offer number…">{{ form.notes or '' }}</textarea></label>
+  </div>
+{% endmacro %}
+
+{% macro finance_badge(p) -%}
+  {%- if p.finance == 'logged' -%}<span class="badge badge-done" title="Logged in finance">in finance</span>
+  {%- elif p.finance == 'failed' -%}<span class="badge badge-late" title="{{ p.finance_error or '' }}">not in finance yet</span>
+  {%- else -%}<span class="badge" title="Not logged from here (already in finance, or left out)">not logged here</span>
+  {%- endif -%}
+{%- endmacro %}

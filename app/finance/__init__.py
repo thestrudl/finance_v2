@@ -101,8 +101,8 @@ def create_app(test_config=None):
 
     @app.before_request
     def csrf_protect():
-        # The webhook authenticates with Telegram's secret header instead.
-        if request.method == "POST" and request.blueprint != "bot":
+        # The webhook authenticates with Telegram's secret header, the API with its token.
+        if request.method == "POST" and request.blueprint not in ("bot", "api"):
             token = session.get("csrf", "")
             sent = request.form.get("csrf", "")
             if not token or not hmac.compare_digest(token.encode(), sent.encode()):

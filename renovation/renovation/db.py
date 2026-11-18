@@ -30,10 +30,25 @@ def _schema(conn):
     conn.executescript(resources.files(__package__).joinpath("schema.sql").read_text())
 
 
+def _migration_2(conn):
+    # Payments and commitments; a task's "paid so far" becomes a payment that
+    # was already in finance.
+    _schema(conn)
+    if "paid_cents" in {row[1] for row in conn.execute("PRAGMA table_info(tasks)")}:
+        conn.execute(
+            """INSERT INTO payments (goal_id, task_id, paid_on, amount_cents, what, finance, created_at)
+               SELECT goal_id, id, COALESCE(done_on, started_on, date('now')), paid_cents,
+                      'Paid before payments were listed', 'skip', updated_at
+               FROM tasks WHERE paid_cents <> 0"""
+        )
+        conn.execute("ALTER TABLE tasks DROP COLUMN paid_cents")
+
+
 # schema.sql is always the full current schema; later entries bring existing
 # databases up to date. PRAGMA user_version records how far we got.
 MIGRATIONS = [
     _schema,
+    _migration_2,
 ]
 
 

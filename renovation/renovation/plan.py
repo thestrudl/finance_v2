@@ -30,7 +30,9 @@ def load(db):
     goals = [dict(r) for r in db.execute("SELECT * FROM goals")]
     tasks = [dict(r) for r in db.execute("SELECT * FROM tasks")]
     deps = [(r["task_id"], r["needs_id"]) for r in db.execute("SELECT task_id, needs_id FROM task_deps")]
-    return goals, tasks, deps
+    payments = [dict(r) for r in db.execute("SELECT * FROM payments ORDER BY paid_on, id")]
+    commitments = [dict(r) for r in db.execute("SELECT * FROM commitments ORDER BY COALESCE(due_on, '9999'), id")]
+    return goals, tasks, deps, payments, commitments
 
 
 def _order(tasks, needs, dependents):
@@ -51,7 +53,30 @@ def _order(tasks, needs, dependents):
     return order + sorted(tid for tid in tasks if tid not in seen)
 
 
-def schedule(goals, tasks, deps, today, tight_days=3):
+def _money(goals, tasks, payments, commitments):
+    """Payments and commitments onto their goals and tasks, with totals:
+    "paid" (all payments), "committed" (all commitments) and, per commitment,
+    what's been paid towards it and what's still "open"."""
+    for c in commitments:
+        c["paid"] = sum(p["amount_cents"] for p in payments if p["commitment_id"] == c["id"])
+        c["open"] = max(c["amount_cents"] - c["paid"], 0)
+    for owner in (*goals.values(), *tasks.values()):
+        owner["payments"], owner["commitments"] = [], []
+    for p in payments:
+        goals[p["goal_id"]]["payments"].append(p)
+        if p["task_id"] in tasks:
+            tasks[p["task_id"]]["payments"].append(p)
+    for c in commitments:
+        goals[c["goal_id"]]["commitments"].append(c)
+        if c["task_id"] in tasks:
+            tasks[c["task_id"]]["commitments"].append(c)
+    for owner in (*goals.values(), *tasks.values()):
+        owner["paid"] = sum(p["amount_cents"] for p in owner["payments"])
+        owner["committed"] = sum(c["amount_cents"] for c in owner["commitments"])
+        owner["committed_open"] = sum(c["open"] for c in owner["commitments"])
+
+
+def schedule(goals, tasks, deps, today, tight_days=3, payments=(), commitments=()):
     """{"today", "goals": [goal, ...] by deadline, each with its "tasks", "tasks": {id: task}}."""
     goals = {g["id"]: dict(g) for g in goals}
     tasks = {t["id"]: dict(t) for t in tasks}
@@ -61,6 +86,7 @@ def schedule(goals, tasks, deps, today, tight_days=3):
             needs[task_id].append(needs_id)
             dependents[needs_id].append(task_id)
     order = _order(tasks, needs, dependents)
+    _money(goals, tasks, [dict(p) for p in payments], [dict(c) for c in commitments])
 
     for tid in order:
         t = tasks[tid]
@@ -112,7 +138,6 @@ def schedule(goals, tasks, deps, today, tight_days=3):
         g["start"] = min((t["start"] for t in own), default=None)
         g["end"] = max((t["end"] for t in own), default=None)
         g["cost"] = sum(t["cost_cents"] for t in own)
-        g["paid"] = sum(t["paid_cents"] for t in own)
         # Until the work is broken down and priced, the rough budget stands in.
         g["estimate"] = g["cost"] if g["cost"] else (g["budget_cents"] or 0)
         g["days_left"] = (deadline - today).days
@@ -125,7 +150,8 @@ def schedule(goals, tasks, deps, today, tight_days=3):
 
 
 def build(db, today, tight_days=3):
-    return schedule(*load(db), today, tight_days)
+    goals, tasks, deps, payments, commitments = load(db)
+    return schedule(goals, tasks, deps, today, tight_days, payments, commitments)
 
 
 def would_cycle(db, task_id, needs_id):
@@ -177,7 +203,8 @@ def to_json(plan):
             "id": g["id"], "title": g["title"], "deadline": g["deadline"],
             "start": iso(g["start"]), "end": iso(g["end"]), "late": g["late"], "tight": g["tight"],
             "finished": g["finished"], "slack": g["slack"], "done": g["done"], "total": g["total"],
-            "estimate": g["estimate"], "paid": g["paid"], "budget": g["budget_cents"], "notes": g["notes"],
+            "estimate": g["estimate"], "paid": g["paid"], "committed": g["committed"], "budget": g["budget_cents"],
+            "notes": g["notes"],
         })
         for t in g["tasks"]:
             tasks.append({
@@ -185,6 +212,6 @@ def to_json(plan):
                 "start": iso(t["start"]), "end": iso(t["end"]), "days": t["days"],
                 "latest_start": iso(t["latest_start"]), "slack": t["slack"], "flag": t["flag"],
                 "needs": t["needs"], "blocked_by": t["blocked_by"], "cost": t["cost_cents"],
-                "paid": t["paid_cents"], "who": t["who"], "not_before": t["not_before"], "notes": t["notes"],
+                "paid": t["paid"], "committed": t["committed"], "who": t["who"], "not_before": t["not_before"], "notes": t["notes"],
             })
     return {"today": plan["today"].isoformat(), "goals": goals, "tasks": tasks}

@@ -85,6 +85,7 @@ MIGRATIONS = [
     _migration_6,
     _schema,  # 7: settings (security fund)
     _migration_8,
+    _schema,  # 9: api_entries (payments logged by the renovation planner)
 ]
 
 

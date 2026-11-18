@@ -134,8 +134,9 @@ def test_quick_status(logged_in, app):
     logged_in.post(f"/tasks/{task}/status", data={"csrf": token, "status": "done"})
     with app.app_context():
         row = get_db().execute("SELECT * FROM tasks WHERE id = ?", (task,)).fetchone()
-    assert (row["status"], row["started_on"], row["done_on"], row["paid_cents"]) == (
-        "done", "2026-11-18", "2026-11-18", 800_00)
+    assert (row["status"], row["started_on"], row["done_on"]) == ("done", "2026-11-18", "2026-11-18")
+    with app.app_context():  # finishing a task doesn't invent a payment
+        assert get_db().execute("SELECT COUNT(*) FROM payments").fetchone()[0] == 0
     logged_in.post(f"/tasks/{task}/status", data={"csrf": token, "status": "todo"})
     with app.app_context():
         row = get_db().execute("SELECT * FROM tasks WHERE id = ?", (task,)).fetchone()

@@ -1,14 +1,21 @@
 """Renovation payments laid over the finance forecast.
 
 The finance forecast leaves out Project and Savings one-offs, so it is the
-household without the renovation; the payments still due here are taken off
-it day by day. What's already been paid is in today's bank & cash estimate
-(logged in finance), so only what's left counts:
+household without the renovation; what's still to pay here is taken off it
+day by day. Payments made are in finance already (logged from here, or by
+hand), so only what's left counts, in this order:
 
-- a task not done yet: its estimate minus what's been paid, on its start or
-  end day (pay_at); a day already past counts tomorrow;
-- a done task: nothing, it's paid;
-- a goal not priced task by task yet: its rough budget, on its deadline.
+- commitments (signed offers, orders): what's still open of each, on its due
+  day; without one, on the day its task is paid for, else on the deadline;
+- task estimates: what isn't paid or committed yet for the task, on its start
+  or end day (pay_at). A task marked done has cost what it cost: only its open
+  commitments still count;
+- payments and commitments on the big item as a whole, not for one task,
+  cover the remaining task estimates, earliest first;
+- a big item not priced task by task: its rough budget, less what's been paid
+  and committed, on its deadline.
+
+A day already past counts tomorrow.
 """
 import logging
 from collections import defaultdict
@@ -22,25 +29,47 @@ log = logging.getLogger(__name__)
 MAX_DAYS = 3 * 366
 
 
+def _pay_day(task):
+    return task["start"] if task["pay_at"] == "start" else task["end"]
+
+
 def payments(plan):
-    """Money still to pay, as [{"day", "cents", "label", "goal", "overdue", "rough"}] by day."""
+    """Money still to pay, as [{"day", "cents", "label", "goal", "goal_id", "task_id", "kind"
+    ("committed" | "estimate" | "budget"), "overdue", "rough"}] by day."""
     first = plan["today"] + timedelta(days=1)
     result = []
+
+    def add(day, cents, label, g, task_id, kind):
+        if cents > 0:
+            result.append({"day": max(day, first), "cents": cents, "label": label, "goal": g["title"],
+                           "goal_id": g["id"], "task_id": task_id, "kind": kind, "overdue": day < first,
+                           "rough": kind == "budget"})
+
     for g in plan["goals"]:
+        tasks = {t["id"]: t for t in g["tasks"]}
+        for c in g["commitments"]:
+            task = tasks.get(c["task_id"])
+            day = (date.fromisoformat(c["due_on"]) if c["due_on"]
+                   else _pay_day(task) if task else g["deadline_day"])
+            add(day, c["open"], c["what"], g, c["task_id"], "committed")
+
         priced = any(t["cost_cents"] for t in g["tasks"])
-        for t in g["tasks"]:
-            left = max(t["cost_cents"] - t["paid_cents"], 0)
-            if t["status"] == "done" or not left:
+        if not priced:
+            if g["budget_cents"] and not g["finished"]:
+                add(g["deadline_day"], g["budget_cents"] - g["paid"] - g["committed_open"], "Rough budget", g,
+                    None, "budget")
+            continue
+
+        # The whole item's own payments and open commitments cover task estimates, earliest first.
+        cover = (sum(p["amount_cents"] for p in g["payments"] if p["task_id"] not in tasks)
+                 + sum(c["open"] for c in g["commitments"] if c["task_id"] not in tasks))
+        for t in sorted(g["tasks"], key=lambda t: (_pay_day(t), t["id"])):
+            if t["status"] == "done":
                 continue
-            day = t["start"] if t["pay_at"] == "start" else t["end"]
-            result.append({"day": max(day, first), "cents": left, "label": t["title"], "goal": g["title"],
-                           "goal_id": g["id"], "overdue": day < first, "rough": False, "task_id": t["id"]})
-        if not priced and g["budget_cents"] and not g["finished"]:
-            left = max(g["budget_cents"] - g["paid"], 0)
-            if left:
-                day = g["deadline_day"]
-                result.append({"day": max(day, first), "cents": left, "label": "Rough budget", "goal": g["title"],
-                               "goal_id": g["id"], "overdue": day < first, "rough": True, "task_id": None})
+            left = t["cost_cents"] - t["paid"] - t["committed_open"]
+            used = min(max(left, 0), max(cover, 0))
+            cover -= used
+            add(_pay_day(t), left - used, t["title"], g, t["id"], "estimate")
     return sorted(result, key=lambda p: (p["day"], p["goal"], p["label"]))
 
 

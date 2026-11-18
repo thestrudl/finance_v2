@@ -134,7 +134,7 @@ Values are as of the last market close. Margin figures aren't part of Flex repor
 
 ### Renovation planner (optional)
 
-A second app for a house renovation, at its own address and behind the same kind of emailed-code login. It keeps its own database and reads from finance only through a read-only API.
+A second app for a house renovation, at its own address and behind the same kind of emailed-code login. It keeps its own database and talks to finance only through a small API: it reads the forecast and logs renovation payments.
 
 **Plan:**
 - Start with the big items, each with a deadline: *Doors on the 2nd floor, done by 1 May*.
@@ -153,8 +153,14 @@ A second app for a house renovation, at its own address and behind the same kind
 **Upcoming (phone):** what's behind schedule, in progress, ready to start and coming up in the next 30 days, with **Start** and **Done** buttons.
 
 **Money:**
-- Each task has an estimate, what's been paid so far, and whether it's paid at the start or the end.
-- Payments still due are taken off the finance forecast, which leaves out Project and Savings one-offs, so nothing counts twice.
+- Each task has an estimate, and whether it's paid at the start or the end.
+- Each big item lists what's **committed** (signed offers and orders, with a due date) and what's been **paid**, for the whole item or one of its tasks.
+- **Recording a payment logs it in finance** as an expense under `RENOVATION_FINANCE_CATEGORY`, with a comment like *Renovation · Doors, 2nd floor · Deposit*. Editing or deleting it there changes or removes it in finance too.
+  - Untick *Log it in finance* for a payment that's already there, for example one sent through Telegram.
+  - If finance doesn't answer, the payment is kept and marked *not in finance yet*, with a Retry button.
+- What's still to pay is taken off the finance forecast, which leaves out Project and Savings one-offs, so nothing counts twice:
+  - open commitments, on their due date;
+  - the part of each estimate that isn't paid or committed yet.
 - The page shows:
   - the lowest point,
   - when the money would dip into the security fund,
@@ -170,7 +176,7 @@ To turn it on:
    docker compose exec renovation flask check-finance
    ```
 
-Finance answers `/api/v1` only with the token, and only over the internal Docker network. Traefik doesn't route `/api` publicly.
+Finance answers `/api/v1` only with the token, and only over the internal Docker network. Traefik doesn't route `/api` publicly. Logged payments are ordinary transactions in finance; a retried request never logs one twice.
 
 ## Backups
 

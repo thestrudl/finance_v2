@@ -156,6 +156,15 @@ CREATE TABLE IF NOT EXISTS sync_status (
     alerted_on   TEXT                              -- date the admin was last told about an error
 );
 
+-- Transactions created through /api/v1 (the renovation planner's payments),
+-- by the caller's key, so a retried request never logs the same payment twice
+-- and the caller can change or remove it later.
+CREATE TABLE IF NOT EXISTS api_entries (
+    key            TEXT PRIMARY KEY,
+    transaction_id INTEGER REFERENCES transactions(id) ON DELETE SET NULL,
+    created_at     TEXT NOT NULL
+);
+
 -- Portal accounts, kept in sync with PORTAL_USERS in .env. No passwords:
 -- logging in means proving you can read the account's email.
 CREATE TABLE IF NOT EXISTS users (
