@@ -1,5 +1,5 @@
 {
-  "_comment": "Copy to household.json (git-ignored) and adapt. Categories: key, label, group (living|business|project|savings), notes. Aliases: other spellings of a category. Merges: applied once to existing data (migration 4).",
+  "_comment": "Copy to household.json (git-ignored) and adapt. Categories: key, label, group (living|business|project|savings), notes. Aliases: other spellings of a category. Merges: applied once to existing data (migration 4). Bills: categories expected every month, reminded on Telegram until logged. Statement: how bank statement lines are read by flask check-statement (skip own transfers, suggest a category).",
   "categories": [
     {
       "key": "rental",
@@ -31,6 +31,12 @@
       "group": "living",
       "notes": "pharmacy, dentist, glasses"
     }
+  ],
+  "bills": ["electricity", "water", "internet"],
+  "statement": [
+    {"match": "ANA NOVAK", "skip": "own transfer"},
+    {"match": "CITY POWER", "category": "electricity", "comment": "power bill"},
+    {"match": "WATERWORKS", "category": "water"}
   ],
   "aliases": {
     "pharmacy": "health",

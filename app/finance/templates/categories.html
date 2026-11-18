@@ -7,13 +7,15 @@
   Telegram categories are free text, so each spelling is folded in lower case, and through
   merges you make here. Merging moves every entry over, and future messages with the old spelling follow.
   Groups decide what “Living costs” and “Without projects &amp; savings” include.
+  A <strong>bill</strong> (electricity, water, internet) is expected every month: Telegram lists the ones
+  not logged yet on the 10th, 15th and 20th.
 </p>
 
 <section class="card">
   <div class="table-wrap">
     <table class="categories">
       <thead>
-        <tr><th>Name</th><th>Group</th><th>Budget (€)</th><th class="r">Entries</th><th class="r">Last 12 mo</th><th></th><th>Merge into</th></tr>
+        <tr><th>Name</th><th>Group</th><th>Budget (€)</th><th title="A monthly bill: Telegram reminds until it is logged">Bill</th><th class="r">Entries</th><th class="r">Last 12 mo</th><th></th><th>Merge into</th></tr>
       </thead>
       <tbody>
         {% for row in rows %}
@@ -42,6 +44,8 @@
               <option value="year" {% if row.budget_period == 'year' %}selected{% endif %}>/ year</option>
             </select>
           </td>
+          <td><input form="{{ form_id }}" type="checkbox" name="bill" value="1" {% if row.bill %}checked{% endif %}
+                     aria-label="{{ row.key }} is a monthly bill"></td>
           <td class="r muted">{{ row.n }}{% if row.last_used %}<div class="small">{{ row.last_used[:10] }}</div>{% endif %}</td>
           <td class="r nowrap">
             {% if row.spent_year %}{{ row.spent_year | eur }}{% endif %}

@@ -1,5 +1,5 @@
 """Background jobs, run as their own container (python -m finance.scheduler)
-so the web workers never run them twice: repeat entries, the daily backup,
+so the web workers never run them twice: repeat entries, bill reminders, the daily backup,
 pruning old bookkeeping rows (update ids, login events and tokens), and the
 morning IBKR holdings sync."""
 import logging
@@ -9,7 +9,7 @@ import time
 import traceback
 from datetime import timedelta
 
-from . import create_app, ibkr, maintenance, repeats, telegram
+from . import bills, create_app, ibkr, maintenance, repeats, telegram
 from .db import get_db
 from .util import now, ts
 
@@ -26,6 +26,8 @@ def tick(app):
         created = repeats.run_due(db, today)
         if created:
             log.info("Logged %d repeat entries", len(created))
+        if bills.remind(db, now()):
+            log.info("Sent the bill reminder")
         if path := maintenance.backup(today):
             log.info("Backup written to %s", path)
         if ibkr.due(db):

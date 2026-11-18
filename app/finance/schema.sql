@@ -8,7 +8,8 @@ CREATE TABLE IF NOT EXISTS categories (
                   CHECK (grp IN ('living', 'business', 'project', 'savings')),
     budget_cents  INTEGER,
     budget_period TEXT CHECK (budget_period IN ('month', 'year')),
-    description   TEXT NOT NULL DEFAULT ''         -- notes shown on the category page
+    description   TEXT NOT NULL DEFAULT '',        -- notes shown on the category page
+    bill          INTEGER NOT NULL DEFAULT 0       -- a monthly bill (electricity, water): reminded until logged
 );
 
 -- Other spellings that should count as an existing category ("clotes" -> clothing).

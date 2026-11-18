@@ -95,6 +95,8 @@
           </select>
         </label>
       </div>
+      <label class="check"><input type="checkbox" name="bill" value="1" {% if cat.bill %}checked{% endif %}>
+        Monthly bill: remind on Telegram until it is logged each month</label>
       <label>Notes <textarea name="description" rows="3">{{ cat.description }}</textarea></label>
       <button type="submit" class="primary">Save</button>
     </form>

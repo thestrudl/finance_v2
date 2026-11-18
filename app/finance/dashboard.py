@@ -764,9 +764,10 @@ def update_category(key):
     period = form.get("budget_period") if form.get("budget_period") in ("month", "year") else None
     group = form.get("grp") if form.get("grp") in GROUPS else "living"
     db.execute(
-        "UPDATE categories SET label = ?, grp = ?, budget_cents = ?, budget_period = ?, description = ? WHERE key = ?",
+        """UPDATE categories SET label = ?, grp = ?, budget_cents = ?, budget_period = ?, description = ?, bill = ?
+           WHERE key = ?""",
         (form.get("label", "").strip() or key, group, budget, period if budget else None,
-         form.get("description", "").strip(), key),
+         form.get("description", "").strip(), 1 if form.get("bill") else 0, key),
     )
     db.commit()
     flash("Category saved.")

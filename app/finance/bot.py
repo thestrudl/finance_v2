@@ -7,7 +7,7 @@ from datetime import timedelta
 
 from flask import Blueprint, abort, current_app, request
 
-from . import VERSION, categories, liquidity, reports, telegram
+from . import VERSION, bills, categories, liquidity, reports, telegram
 from .db import get_db
 from .parser import Parsed, parse
 from .util import fmt_eur, now, plain_amount, to_cents, ts
@@ -277,6 +277,7 @@ def cmd_help(chat_id, _sender):
         " - report  (chart for current month)\n"
         " - summary  (last week or last month in numbers)\n"
         " - list repeat\n"
+        " - bills  (which monthly bills are logged this month)\n"
         " - undo  (remove your last entry)\n"
         " - balance  (estimated bank & cash; 'balance 4520.30' when you know the real total)\n"
         " - dashboard\n\n"
@@ -295,6 +296,7 @@ def cmd_help(chat_id, _sender):
         [{"text": "Report", "callback_data": "report"}],
         [{"text": "Summary", "callback_data": "summaryMenu"}],
         [{"text": "List Repeat", "callback_data": "listRepeat"}],
+        [{"text": "Bills", "callback_data": "bills"}],
     ]
     if cfg["PUBLIC_URL"]:
         keyboard.append([{"text": "Open dashboard", "url": cfg["PUBLIC_URL"]}])
@@ -344,6 +346,10 @@ def cmd_list_repeat(chat_id, _sender):
     url = current_app.config["PUBLIC_URL"]
     footer = f"\n\nEdit or delete them at {url}/repeats" if url else ""
     telegram.send_text(chat_id, ("\n".join(lines) or "No repeat entries.") + footer)
+
+
+def cmd_bills(chat_id, _sender):
+    telegram.send_text(chat_id, bills.status_text(get_db(), now().date()))
 
 
 def cmd_version(chat_id, _sender):
@@ -419,6 +425,7 @@ COMMANDS = {
     "report": cmd_report,
     "summary": cmd_summary_menu,
     "list_repeat": cmd_list_repeat,
+    "bills": cmd_bills,
     "version": cmd_version,
     "undo": cmd_undo,
     "dashboard": cmd_dashboard,
@@ -428,6 +435,7 @@ CALLBACKS = {
     "categories": cmd_categories,
     "report": cmd_report,
     "listRepeat": cmd_list_repeat,
+    "bills": cmd_bills,
     "summaryMenu": cmd_summary_menu,
     "summaryWeekly": cmd_summary("weekly"),
     "summaryMonthly": cmd_summary("monthly"),

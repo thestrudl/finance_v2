@@ -4,7 +4,7 @@
     in salary 2500 october        income
     repeat tel 19.89 18 phone     monthly expense, logged on day 18
     repeat in salary 2500 15      monthly income
-    help | categories | report | summary | list repeat | version | undo | dashboard
+    help | categories | report | summary | list repeat | bills | version | undo | dashboard
     ("ai report" still works and means "summary")
     balance                       estimated bank & cash now
     balance 4520.30               what is really in the accounts and cash right now
@@ -31,6 +31,7 @@ COMMANDS = [
     ("summary", _command(r"(?:summary|ai\s*report)")),
     ("report", _command(r"report")),
     ("list_repeat", _command(r"list\s*repeat")),
+    ("bills", _command(r"bills")),
     ("version", _command(r"version")),
     ("undo", _command(r"undo")),
     ("dashboard", _command(r"dashboard")),

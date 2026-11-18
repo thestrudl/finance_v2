@@ -16,6 +16,7 @@ finance-scheduler container: monthly repeats, daily backup, morning IBKR sync
 - `food 5.5 lunch` logs an expense, `in salary 2500` logs income, and `repeat tel 19.89 18` adds a monthly entry on day 18.
 - `report` sends this month as a chart. `summary` gives last week or last month in numbers: against usual, budgets, businesses and unusual expenses.
 - `balance` gives the estimated bank and cash; `balance 4520.30` records the real total. `undo` removes your last entry, and `help` lists everything.
+- Monthly bills: tick **Bill** on a category (electricity, water, internet) and on the 10th, 15th and 20th the bot lists the ones not logged yet this month. `bills` shows this month and last; `elektrika 0` marks a month without one. Change the days with `BILL_REMINDER_DAYS`.
 - Typo check: if a new category is one or two letters off one you use regularly (`fodo`), the bot asks "Did you mean Food?" with buttons, and stores nothing until someone answers.
 
 **Portal**
@@ -97,6 +98,24 @@ How it reads the file:
 - **Amounts and booleans:** decimal commas and localized TRUE/FALSE work.
 - **Reversed mistakes:** a wrong entry followed straight away by its exact negative is dropped as a pair.
 - **Whole workbook:** `flask import-ods` reads it, including budgets.
+
+### Checking a bank statement
+
+To find payments that were never logged, export the account's transactions as CSV (NLB: *promet*) and run:
+
+```sh
+docker compose exec -T finance flask check-statement - < promet.csv                      # what's missing, by month
+docker compose exec -T finance flask check-statement --csv - - < promet.csv > missing.csv # the missing lines as CSV
+docker compose exec -T finance flask import-csv --append - < missing.csv                 # after filling in categories
+```
+
+A payment counts as logged when an entry with the same amount is within 7 days of it. Amounts that add up count too, from €20:
+- **`part`:** one entry paid in several payments, such as a 1000 deposit paid as 2 × 500, or one purchase split across two tills.
+- **`sum`:** one payment for several entries in the same category, logged within a day of each other.
+
+These are shown for review:
+- **`~`:** a rounded amount within 2 days.
+- **`SIGN`:** an entry logged with the wrong sign, such as a −70 refund for money that went out. The `statement` rules in `household.json` skip own transfers and suggest categories.
 
 ### Interactive Brokers (optional)
 

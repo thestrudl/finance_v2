@@ -80,12 +80,16 @@ def _text(value):
     return str(value).strip()
 
 
-def import_transactions(db, rows, replace=False):
-    """webHookData rows (no header): [when, user, price, category, comment, income]."""
+def import_transactions(db, rows, replace=False, append=False):
+    """webHookData rows (no header): [when, user, price, category, comment, income].
+
+    `append` adds the rows as if entered in the portal (source 'web'), next to
+    everything already there, e.g. payments found missing on a bank statement."""
+    source = "web" if append else "import"
     existing = db.execute("SELECT COUNT(*) FROM transactions WHERE source = 'import'").fetchone()[0]
-    if existing and not replace:
+    if existing and not replace and not append:
         raise ValueError(f"{existing} imported transactions already exist. Use --replace to import again.")
-    if replace:
+    if replace and not append:
         db.execute("DELETE FROM transactions WHERE source = 'import'")
 
     summary = Counter()
@@ -103,12 +107,14 @@ def import_transactions(db, rows, replace=False):
         db.execute(
             """INSERT INTO transactions (occurred_at, user_name, amount_cents, category, category_raw,
                    comment, is_income, source, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, 'import', ?)""",
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (when.strftime(TS_FORMAT), None if user in ("", "undefined undefined") else user,
              to_cents(price), categories.resolve(db, category), category.strip(), _text(comment),
-             1 if income in (1.0, True) else 0, stamp),
+             1 if income in (1.0, True) else 0, source, stamp),
         )
         summary["transactions"] += 1
+    if append:
+        return summary
     dropped = drop_reversed_pairs(db)
     if dropped:
         summary["transactions"] -= 2 * dropped

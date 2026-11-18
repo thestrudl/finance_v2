@@ -51,6 +51,9 @@ def load_config():
         "TELEGRAM_WEBHOOK_SECRET": os.environ.get("TELEGRAM_WEBHOOK_SECRET", ""),
         "TELEGRAM_ADMIN_ID": os.environ.get("TELEGRAM_ADMIN_ID", ""),
         "TELEGRAM_ALLOWED_IDS": _env_ids("TELEGRAM_ALLOWED_IDS"),
+        # Days of the month when bills not logged yet are listed in Telegram.
+        "BILL_REMINDER_DAYS": os.environ.get("BILL_REMINDER_DAYS", "10,15,20"),
+        "BILL_REMINDER_CHAT": os.environ.get("BILL_REMINDER_CHAT", ""),  # empty: the household group
         # Tests run background work inline so they can assert on it.
         "SYNC_TASKS": False,
         "SESSION_COOKIE_SECURE": True,

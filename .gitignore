@@ -6,6 +6,7 @@ __pycache__/
 # Private: household data, the spreadsheet export and the old script (it contains live API keys).
 app/household.json
 import/
+missing_data/
 *.csv
 *.ods
 *.db

@@ -66,6 +66,16 @@ def _migration_6(conn, household=None):
     _schema(conn)
 
 
+def _migration_8(conn, household):
+    # Monthly bills: categories reminded on Telegram until logged each month.
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(categories)")}
+    if "bill" not in columns:
+        conn.execute("ALTER TABLE categories ADD COLUMN bill INTEGER NOT NULL DEFAULT 0")
+    from .categories import apply_bills
+
+    apply_bills(conn, household)
+
+
 MIGRATIONS = [
     _migration_1,
     _migration_2,
@@ -74,6 +84,7 @@ MIGRATIONS = [
     _schema,  # 5: holdings (IBKR Flex snapshots) and sync_status
     _migration_6,
     _schema,  # 7: settings (security fund)
+    _migration_8,
 ]
 
 

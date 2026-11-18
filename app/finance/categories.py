@@ -38,6 +38,8 @@ DEFAULT_ALIASES = {
 #   categories: [{key, label, group, notes}]  created if missing, group set
 #   aliases:    {spelling: key}                folded on every message
 #   merges:     {old key: new key}             applied to existing data by migration 4
+#   bills:      [key]                          monthly bills, marked by migration 8
+#   statement:  [{match, category | skip}]     how bank statement lines are read (statement.py)
 HOUSEHOLD_FILE = Path(__file__).resolve().parent.parent / "household.json"
 EXAMPLE_FILE = HOUSEHOLD_FILE.with_name("household.example.json")
 
@@ -52,8 +54,10 @@ def load_household(path=None):
                                 c.get("notes", "")) for c in data.get("categories", [])],
                 "aliases": data.get("aliases", {}),
                 "merges": data.get("merges", {}),
+                "bills": data.get("bills", []),
+                "statement": data.get("statement", []),
             }
-    return {"categories": [], "aliases": {}, "merges": {}}
+    return {"categories": [], "aliases": {}, "merges": {}, "bills": [], "statement": []}
 
 
 def _apply_categories(conn, rows):
@@ -78,6 +82,28 @@ def cleanup(conn, household):
     for source, target in household["merges"].items():
         conn.execute("INSERT OR IGNORE INTO categories (key, label) VALUES (?, ?)", (target, default_label(target)))
         merge(conn, source, target)
+
+
+def apply_bills(conn, household):
+    """Create categories and spellings added to household.json since the
+    first start, and mark the bills. Existing categories keep their group,
+    name and notes as set in the portal. A key since merged into another
+    category (it is a spelling now) is not created again."""
+    def merged(key):
+        return conn.execute("SELECT 1 FROM category_aliases WHERE alias = ?", (key,)).fetchone() is not None
+
+    for key, label, grp, notes in household["categories"]:
+        if not merged(key):
+            conn.execute("INSERT OR IGNORE INTO categories (key, label, grp, description) VALUES (?, ?, ?, ?)",
+                         (key, label, grp, notes))
+    for key in household.get("bills", []):
+        if not merged(key):
+            conn.execute("INSERT OR IGNORE INTO categories (key, label) VALUES (?, ?)", (key, default_label(key)))
+            conn.execute("UPDATE categories SET bill = 1 WHERE key = ?", (key,))
+    for alias, key in household["aliases"].items():
+        if not merged(key):
+            conn.execute("INSERT OR IGNORE INTO categories (key, label) VALUES (?, ?)", (key, default_label(key)))
+            conn.execute("INSERT OR IGNORE INTO category_aliases (alias, category_key) VALUES (?, ?)", (alias, key))
 
 
 def default_label(spelled):
