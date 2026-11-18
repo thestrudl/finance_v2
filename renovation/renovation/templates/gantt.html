@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% from "_macros.html" import upcoming_sections %}
+{% block title %}Plan{% endblock %}
+{% block body_class %}page-gantt{% endblock %}
+{% block eyebrow %}{{ plan.today | day }}{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <h1>Plan</h1>
+  <div class="gantt-tools">
+    <div class="segmented chart-only" role="group" aria-label="Zoom">
+      <a href="#" data-zoom="day">Days</a>
+      <a href="#" data-zoom="week">Weeks</a>
+      <a href="#" data-zoom="month">Months</a>
+    </div>
+    <button type="button" class="btn chart-only" data-scroll-today>Today</button>
+    <a class="btn" href="{{ url_for('views.new_task', next='/') }}">+ Task</a>
+  </div>
+</div>
+
+<details class="card add-goal" {% if not plan.goals %}open{% endif %}>
+  <summary>Add a big item</summary>
+  <form method="post" action="{{ url_for('views.new_goal') }}" class="filters">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <input type="hidden" name="next" value="/">
+    <label class="grow">What <input name="title" required placeholder="e.g. Doors on the 2nd floor"></label>
+    <label>Done by <input type="date" name="deadline" required></label>
+    <label>Rough budget (€) <input name="budget" inputmode="decimal" class="w-money"></label>
+    <button type="submit" class="primary">Add</button>
+  </form>
+  <p class="muted small">Every big item has a deadline. Then add the work under it: what has to happen first, how long it takes and what it costs.</p>
+</details>
+
+{% if plan.goals %}
+<section class="gantt-card card only-wide-chart">
+  <div class="gantt-legend" aria-hidden="true">
+    <span><i class="lg lg-todo"></i>To do</span>
+    <span><i class="lg lg-doing"></i>In progress</span>
+    <span><i class="lg lg-done"></i>Done</span>
+    <span><i class="lg lg-tight"></i>Tight</span>
+    <span><i class="lg lg-late"></i>Misses a deadline</span>
+    <span><i class="lg lg-deadline"></i>Deadline</span>
+  </div>
+  <div id="gantt" class="gantt" data-source="plan-data" tabindex="0" aria-label="Gantt chart of the renovation"></div>
+  <p class="gantt-status" role="status" aria-live="polite"></p>
+  <p class="muted small gantt-help">Drag a bar to move it, its right edge to make it longer or shorter, and the
+    <span class="dot-sample"></span> at its end onto the task that has to wait for it. Drag a deadline ◆ to move it.
+    Click anything to edit it. Whatever waits for a task moves with it.</p>
+</section>
+<script type="application/json" id="plan-data">{{ plan_json | tojson }}</script>
+{% endif %}
+
+<div class="only-narrow upcoming">
+  {% if plan.goals %}
+  <p class="muted small">The chart needs a wider screen. <button type="button" class="link" data-show-chart>Show it anyway</button></p>
+  {% endif %}
+  {{ upcoming_sections(plan, upcoming, statuses) }}
+</div>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='gantt.js') }}"></script>{% endblock %}

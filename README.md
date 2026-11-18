@@ -60,6 +60,8 @@ Python 3.12, Flask, gunicorn and SQLite, with Chart.js (vendored) and matplotlib
 | `app/finance/repeats.py`, `scheduler.py` | Monthly repeats, backups, morning sync |
 | `app/finance/importer.py` | Import from a Google Sheet (.csv or .ods) |
 | `app/household.example.json` | Example household categories, spellings and merges |
+| `app/finance/api.py` | Read-only JSON for the renovation planner |
+| `renovation/` | Renovation planner: a separate app with its own image, database and login |
 
 ## Setup
 
@@ -130,6 +132,46 @@ These are shown for review:
 
 Values are as of the last market close. Margin figures aren't part of Flex reports. When the token expires, the admin gets a Telegram message.
 
+### Renovation planner (optional)
+
+A second app for a house renovation, at its own address and behind the same kind of emailed-code login. It keeps its own database and reads from finance only through a read-only API.
+
+**Plan:**
+- Start with the big items, each with a deadline: *Doors on the 2nd floor, done by 1 May*.
+- Under each, add the work it needs, how many days each part takes and what it waits for. For the doors: walls and electricity, then drywall, then parquet, then the doors.
+- Each task starts the day after everything it waits for is finished. It never starts before today or before a *not before* date (for example, when the contractor can come).
+- Working back from the deadlines, each task gets a latest start. A task with only a few days to spare is marked **tight**. One that will finish too late is marked **late**, and so is everything that holds it up, even under another big item.
+
+**Gantt chart (computer):**
+- Drag a bar to move it.
+- Drag its right edge to change how long it takes.
+- Drag the dot at its end onto the task that has to wait for it.
+- Drag a deadline ◆ to move it.
+- Click a dependency arrow to remove that link.
+- Whatever depends on a task moves with it.
+
+**Upcoming (phone):** what's behind schedule, in progress, ready to start and coming up in the next 30 days, with **Start** and **Done** buttons.
+
+**Money:**
+- Each task has an estimate, what's been paid so far, and whether it's paid at the start or the end.
+- Payments still due are taken off the finance forecast, which leaves out Project and Savings one-offs, so nothing counts twice.
+- The page shows:
+  - the lowest point,
+  - when the money would dip into the security fund,
+  - how much could go elsewhere (an investment) today without that happening.
+
+To turn it on:
+
+1. Point a DNS name at the server.
+2. In `.env`, uncomment `COMPOSE_PROFILES=renovation` and set `RENOVATION_HOST`, `RENOVATION_SECRET_KEY` and `FINANCE_API_TOKEN` (each its own random value). Optionally set `RENOVATION_USERS` (default: the same people as `PORTAL_USERS`) and `RENOVATION_FINANCE_CATEGORY` (e.g. `hisa`).
+3. Start it and check the link to finance:
+   ```sh
+   docker compose up -d --build
+   docker compose exec renovation flask check-finance
+   ```
+
+Finance answers `/api/v1` only with the token, and only over the internal Docker network. Traefik doesn't route `/api` publicly.
+
 ## Backups
 
 The scheduler writes `/data/backups/finance-YYYY-MM-DD.db` daily and keeps 14 copies. They sit on the same disk, so copy one elsewhere now and then:
@@ -138,10 +180,13 @@ The scheduler writes `/data/backups/finance-YYYY-MM-DD.db` daily and keeps 14 co
 docker compose cp finance:/data/backups/finance-$(date +%F).db .
 ```
 
+The renovation planner does the same in its own volume (`renovation-maintenance` container, `renovation-YYYY-MM-DD.db`).
+
 ## Tests
 
 ```sh
 cd app && pip install -r requirements-dev.txt && pytest
+cd ../renovation && pip install -r requirements-dev.txt && pytest
 ```
 
 ## License
@@ -149,5 +194,5 @@ cd app && pip install -r requirements-dev.txt && pytest
 [MIT](LICENSE) © Rok Vidmar ([blog.rokvidmar.xyz](https://blog.rokvidmar.xyz/)). Free to use, change and sell, including commercially. Keep the copyright notice and license text in copies or substantial parts of the code.
 
 Third-party files keep their own licenses:
-- **Chart.js:** MIT, notice in `app/finance/static/vendor/chart.umd.js`.
+- **Chart.js:** MIT, notice in `app/finance/static/vendor/chart.umd.js` (and its copy in `renovation/`).
 - **Inter, Space Grotesk, IBM Plex Mono:** SIL Open Font License 1.1, texts in `app/finance/static/fonts/`.

@@ -1,0 +1,113 @@
+{% macro flag_badge(t) -%}
+  {%- if t.flag == 'late' -%}
+    <span class="badge badge-late" title="Finishes after it must, to make the deadline">{{ t.slack | days_word }} late</span>
+  {%- elif t.flag == 'tight' -%}
+    <span class="badge badge-tight" title="Little room left for delays">{{ t.slack | days_word }} to spare</span>
+  {%- endif -%}
+{%- endmacro %}
+
+{% macro notes_block(text) -%}
+  {%- if text -%}
+  <details class="notes">
+    <summary>{{ text.splitlines()[0] | truncate(70, True, '…') }}</summary>
+    <p class="notes-text">{{ text }}</p>
+  </details>
+  {%- endif -%}
+{%- endmacro %}
+
+{% macro task_card(t, plan, statuses) %}
+<li class="task-card flag-{{ t.flag or 'none' }} status-{{ t.status }}" id="task-{{ t.id }}">
+  <div class="task-card-head">
+    <a href="{{ url_for('views.edit_task', task_id=t.id, next=request.full_path.rstrip('?')) }}" class="task-title">{{ t.title }}</a>
+    {{ flag_badge(t) }}
+  </div>
+  <div class="task-meta">
+    <span>{{ t.goal_title }}</span>
+    {% if t.status == 'doing' %}
+      <span>until {{ t.end | day }} ({{ relative_day(t.end) }})</span>
+    {% else %}
+      <span>{{ t.start | day }} ({{ relative_day(t.start) }}), {{ t.days | days_word }}</span>
+    {% endif %}
+    {% if t.who %}<span>{{ t.who }}</span>{% endif %}
+    {% if t.cost_cents %}<span>{{ t.cost_cents | eur }}{% if t.paid_cents %}, {{ t.paid_cents | eur }} paid{% endif %}</span>{% endif %}
+  </div>
+  {% if t.blocked_by %}
+  <div class="task-meta waiting">Waiting for:
+    {% for n in t.blocked_by %}{{ plan.tasks[n].title }}{{ ', ' if not loop.last }}{% endfor %}
+  </div>
+  {% endif %}
+  {% if t.flag and t.status == 'todo' %}
+  <div class="task-meta">Must start by {{ t.latest_start | day }}</div>
+  {% endif %}
+  {{ notes_block(t.notes) }}
+  <form method="post" action="{{ url_for('views.task_status', task_id=t.id) }}" class="task-actions">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <input type="hidden" name="next" value="{{ request.full_path.rstrip('?') }}">
+    {% if t.status == 'todo' %}
+      <button type="submit" name="status" value="doing" class="small-btn">Start</button>
+    {% endif %}
+    <button type="submit" name="status" value="done" class="small-btn primary-outline">Done</button>
+  </form>
+</li>
+{% endmacro %}
+
+{% macro task_section(title, tasks, plan, statuses, empty='', note='') %}
+<section class="card upcoming-section">
+  <h2>{{ title }} <span class="count">{{ tasks | length }}</span></h2>
+  {% if note %}<p class="muted small note">{{ note }}</p>{% endif %}
+  {% if tasks %}
+  <ul class="task-list">{% for t in tasks %}{{ task_card(t, plan, statuses) }}{% endfor %}</ul>
+  {% elif empty %}
+  <p class="empty">{{ empty }}</p>
+  {% endif %}
+</section>
+{% endmacro %}
+
+{% macro goal_list(plan) %}
+<section class="card">
+  <div class="section-title-row">
+    <h2>Big items</h2>
+    <a class="btn" href="{{ url_for('views.new_goal', next=request.full_path.rstrip('?')) }}">+ Big item</a>
+  </div>
+  {% if plan.goals %}
+  <ul class="goal-list">
+    {% for g in plan.goals %}
+    <li class="goal-item {{ 'is-late' if g.late }} {{ 'is-finished' if g.finished }}" id="goal-{{ g.id }}">
+      <div class="task-card-head">
+        <a href="{{ url_for('views.edit_goal', goal_id=g.id, next=request.full_path.rstrip('?')) }}" class="task-title">{{ g.title }}</a>
+        {% if g.finished %}<span class="badge badge-done">done</span>
+        {% elif g.late %}<span class="badge badge-late">{{ g.slack | days_word }} late</span>
+        {% elif g.tight %}<span class="badge badge-tight">tight</span>{% endif %}
+      </div>
+      <div class="task-meta">
+        <span>by {{ g.deadline_day | day }} ({{ relative_day(g.deadline_day) }})</span>
+        {% if g.total %}<span>{{ g.done }}/{{ g.total }} done</span>{% else %}<span>no tasks yet</span>{% endif %}
+        {% if g.end and not g.finished %}<span>planned to finish {{ g.end | day }}</span>{% endif %}
+        {% if g.estimate %}<span>{{ g.estimate | eur }}</span>{% endif %}
+      </div>
+      {{ notes_block(g.notes) }}
+      {% if g.total %}
+      <div class="meter" role="img" aria-label="{{ g.done }} of {{ g.total }} tasks done">
+        <div class="meter-fill {{ 'status-bg-over' if g.late else 'status-bg-ok' }}" style="width: {{ (g.done / g.total * 100) | round(1) }}%"></div>
+      </div>
+      {% endif %}
+      <a class="small" href="{{ url_for('views.new_task', goal=g.id, next=request.full_path.rstrip('?')) }}">+ Add a task</a>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="empty">Nothing planned yet. Start with a big item and its deadline, like “Doors on the 2nd floor, by 1 May”.</p>
+  {% endif %}
+</section>
+{% endmacro %}
+
+{% macro upcoming_sections(plan, upcoming, statuses) %}
+  {% if upcoming.late %}
+  {{ task_section('Behind schedule', upcoming.late, plan, statuses,
+                  note='These finish too late for a deadline. Start them now, shorten them, or move the deadline.') }}
+  {% endif %}
+  {{ task_section('In progress', upcoming.doing, plan, statuses, empty='Nothing in progress.') }}
+  {{ task_section('Ready to start', upcoming.ready, plan, statuses, empty='Nothing ready: everything waits for something else, or for its date.') }}
+  {{ task_section('Coming up in ' ~ upcoming.horizon ~ ' days', upcoming.soon, plan, statuses, empty='Nothing else in the next ' ~ upcoming.horizon ~ ' days.') }}
+  {{ goal_list(plan) }}
+{% endmacro %}

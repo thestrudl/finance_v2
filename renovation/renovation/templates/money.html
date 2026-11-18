@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% block title %}Money{% endblock %}
+{% block eyebrow %}Cash flow to {{ until | day }}{% endblock %}
+{% macro money(cents) -%}
+  <span class="{{ 'negative-value' if cents < 0 }}">{{ cents | eur }}</span>
+{%- endmacro %}
+{% block content %}
+<div class="toolbar"><h1>Money</h1></div>
+
+{% if problem %}<p class="flash">{{ problem }}</p>{% endif %}
+
+<section class="tiles">
+  {% if result %}
+  <div class="tile">
+    <span class="tile-label">Bank &amp; cash now</span>
+    <span class="tile-value">{{ money(result.start) }}</span>
+    <span class="delta">{% if finance.balance %}last checked {{ finance.balance.checked_at[:10] | day }}{% else %}no balance check in finance yet{% endif %}</span>
+    {% if result.fund %}<span class="delta">security fund {{ result.fund | eur }}</span>{% endif %}
+  </div>
+  <div class="tile">
+    <span class="tile-label">Free to invest now</span>
+    <span class="tile-value">{{ money(result.spare) }}</span>
+    {% if result.spare >= 0 %}
+    <span class="delta wrap">can go elsewhere today and the {{ 'security fund' if result.fund else 'balance' }} still holds until {{ until | day }}, renovation paid</span>
+    {% else %}
+    <span class="delta bad wrap">▼ {{ (-result.spare) | eur }} short{% if result.fund %} of the security fund{% endif %} on {{ result.low.day | day }}</span>
+    {% endif %}
+  </div>
+  <div class="tile">
+    <span class="tile-label">Lowest point</span>
+    <span class="tile-value">{{ money(result.low.amount) }}</span>
+    <span class="delta">on {{ result.low.day | day }}, with the renovation</span>
+    {% if result.below_fund %}<span class="delta bad wrap">▼ into the security fund from {{ result.below_fund.day | day }}</span>{% endif %}
+    {% if result.below_zero %}<span class="delta bad wrap">▼ below zero from {{ result.below_zero.day | day }}</span>{% endif %}
+  </div>
+  {% endif %}
+  <div class="tile">
+    <span class="tile-label">Renovation still to pay</span>
+    <span class="tile-value">{{ totals.left | eur }}</span>
+    <span class="delta">of {{ totals.estimate | eur }} estimated; {{ totals.paid | eur }} paid</span>
+    {% if totals.overdue %}<span class="delta bad wrap">{{ totals.overdue | eur }} of it is due already</span>{% endif %}
+  </div>
+</section>
+
+{% if chart %}
+<section class="card">
+  <h2>Bank &amp; cash, with and without the renovation</h2>
+  <p class="muted small note">The finance forecast (repeats, the average living month, income and business as last year) without one-off
+    project spending, then minus what's still to pay here. To {{ until | day }}, a month past the last payment.</p>
+  <div class="chart"><canvas data-chart="money-chart" aria-label="Bank and cash forecast with and without the renovation"></canvas></div>
+  <script type="application/json" id="money-chart">{{ chart | tojson }}</script>
+</section>
+{% endif %}
+
+<div class="grid-2">
+<section class="card">
+  <h2>By month</h2>
+  {% if result %}
+  <div class="table-wrap">
+  <table class="num">
+    <thead><tr><th>Month</th><th>Renovation</th><th>End of month</th><th>{{ 'Above the fund' if result.fund else 'Without renovation' }}</th></tr></thead>
+    <tbody>
+    {% for m in result.months %}
+      <tr>
+        <td>{{ m.label }}</td>
+        <td>{{ m.renovation | eur if m.renovation else '–' }}</td>
+        <td>{{ money(m.with) }}</td>
+        <td>{% if result.fund %}{{ money(m.free) }}{% else %}{{ m.without | eur }}{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% elif months %}
+  <table class="num">
+    <thead><tr><th>Month</th><th>Renovation</th></tr></thead>
+    <tbody>{% for label, cents, _ in months %}<tr><td>{{ label }}</td><td>{{ cents | eur }}</td></tr>{% endfor %}</tbody>
+  </table>
+  {% else %}
+  <p class="empty">Nothing left to pay.</p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>By big item</h2>
+  {% if plan.goals %}
+  <div class="table-wrap">
+  <table class="num">
+    <thead><tr><th>Item</th><th>Estimate</th><th>Paid</th><th>Left</th></tr></thead>
+    <tbody>
+    {% for g in plan.goals %}
+      {% set left = pays | selectattr('goal_id', 'equalto', g.id) | map(attribute='cents') | sum %}
+      <tr>
+        <td><a href="{{ url_for('views.edit_goal', goal_id=g.id, next='/money') }}">{{ g.title }}</a>
+          {% if not g.cost and g.budget_cents %}<span class="badge">rough</span>{% endif %}</td>
+        <td>{{ g.estimate | eur }}</td>
+        <td>{{ g.paid | eur }}</td>
+        <td>{{ left | eur }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+    <tfoot><tr><th>Total</th><th>{{ totals.estimate | eur }}</th><th>{{ totals.paid | eur }}</th><th>{{ totals.left | eur }}</th></tr></tfoot>
+  </table>
+  </div>
+  {% if finance and finance.category_spend %}
+  {% set spend = finance.category_spend %}
+  <p class="muted small note">
+    {% if spend.found %}Logged in finance under {{ spend.label }}: <strong>{{ spend.total_cents | eur }}</strong> in total.
+    Paid here: {{ totals.paid | eur }}.
+    {% else %}There's no “{{ spend.category }}” category in finance; check RENOVATION_FINANCE_CATEGORY.{% endif %}
+  </p>
+  {% endif %}
+  {% else %}
+  <p class="empty">No big items yet.</p>
+  {% endif %}
+</section>
+</div>
+
+<section class="card">
+  <h2>Payments to come</h2>
+  {% if pays %}
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Day</th><th>For</th><th>Item</th><th class="r">Amount</th></tr></thead>
+    <tbody>
+    {% for p in pays %}
+      <tr>
+        <td class="nowrap">{{ p.day | day }}{% if p.overdue %} <span class="badge badge-late">due</span>{% endif %}</td>
+        <td>{% if p.task_id %}<a href="{{ url_for('views.edit_task', task_id=p.task_id, next='/money') }}">{{ p.label }}</a>{% else %}<span class="muted">{{ p.label }}</span>{% endif %}</td>
+        <td>{{ p.goal }}</td>
+        <td class="r nowrap">{{ p.cents | eur }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% if result and result.beyond %}<p class="muted small">{{ result.beyond | eur }} falls after the forecast ends.</p>{% endif %}
+  <p class="muted small">A task counts what's left of its estimate, on the day it starts or ends. Marking it done marks it paid;
+    log the real payment in finance as usual. A due payment that hasn't been made counts tomorrow.</p>
+  {% else %}
+  <p class="empty">Nothing left to pay. Give tasks an estimate to see them here.</p>
+  {% endif %}
+</section>
+{% endblock %}
+{% block scripts %}{% if chart %}<script src="{{ url_for('static', filename='vendor/chart.umd.js') }}"></script>{% endif %}{% endblock %}

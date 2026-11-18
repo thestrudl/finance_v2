@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% from "_macros.html" import flag_badge %}
+{% block title %}{{ goal.title if goal else 'New big item' }}{% endblock %}
+{% block eyebrow %}Big item{% endblock %}
+{% block content %}
+<div class="toolbar"><h1>{{ goal.title if goal else 'New big item' }}</h1></div>
+
+<div class="grid-2">
+<section class="card">
+  {% for e in errors %}<p class="flash error">{{ e }}</p>{% endfor %}
+  <form method="post" class="stack">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <input type="hidden" name="next" value="{{ request.values.get('next', '') }}">
+    <label>What <input name="title" value="{{ form.title or '' }}" required placeholder="e.g. Doors on the 2nd floor"></label>
+    <label>Must be done by <input type="date" name="deadline" value="{{ form.deadline or '' }}" required></label>
+    <label>Rough budget (€)
+      <input name="budget" value="{{ form.budget or '' }}" inputmode="decimal" class="w-money-lg">
+    </label>
+    <p class="muted small">The budget counts in the cash flow on the deadline until the tasks under it have their own estimates.</p>
+    <label>Notes <textarea name="notes" rows="7" placeholder="Decisions, measurements, offers, who to call…">{{ form.notes or '' }}</textarea></label>
+    <div class="row">
+      <button type="submit" class="primary">Save</button>
+      <a class="btn" href="{{ request.values.get('next') or url_for('views.gantt') }}">Cancel</a>
+    </div>
+  </form>
+  {% if goal %}
+  <form method="post" action="{{ url_for('views.delete_goal', goal_id=goal.id) }}" class="delete-form"
+        data-confirm="Delete {{ goal.title }} and every task under it?">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <button type="submit" class="link danger">Delete this big item and its tasks</button>
+  </form>
+  {% endif %}
+</section>
+
+{% if goal_plan %}
+<section class="card">
+  <div class="section-title-row">
+    <h2>The work under it</h2>
+    <a class="btn" href="{{ url_for('views.new_task', goal=goal.id, next=request.full_path.rstrip('?')) }}">+ Task</a>
+  </div>
+  {% if goal_plan.tasks %}
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Task</th><th>When</th><th class="r">Estimate</th></tr></thead>
+    <tbody>
+    {% for t in goal_plan.tasks %}
+      <tr>
+        <td><a href="{{ url_for('views.edit_task', task_id=t.id, next=request.full_path.rstrip('?')) }}">{{ t.title }}</a>
+          <span class="muted small">{{ statuses[t.status] | lower }}</span> {{ flag_badge(t) }}
+          {% if t.notes %}<p class="notes-text small muted">{{ t.notes }}</p>{% endif %}</td>
+        <td class="nowrap">{{ t.start | day }} – {{ t.end | day }}</td>
+        <td class="r nowrap">{{ t.cost_cents | eur }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+    <tfoot><tr><th>Planned to finish {{ goal_plan.end | day }}</th>
+      <th class="nowrap">{% if goal_plan.late %}<span class="negative-value">{{ goal_plan.slack | days_word }} late</span>{% else %}{{ goal_plan.slack | days_word }} to spare{% endif %}</th>
+      <th class="r">{{ goal_plan.cost | eur }}</th></tr></tfoot>
+  </table>
+  </div>
+  {% if goal.budget_cents and goal_plan.cost %}
+  <p class="muted small">Rough budget {{ goal.budget_cents | eur }}; the tasks add up to {{ goal_plan.cost | eur }}
+    ({{ (goal_plan.cost - goal.budget_cents) | eur(True) }}).</p>
+  {% endif %}
+  {% else %}
+  <p class="empty">No tasks yet. Add what has to happen for this to be done: for doors, maybe walls, electricity, drywall and parquet first.</p>
+  {% endif %}
+</section>
+{% endif %}
+</div>
+{% endblock %}

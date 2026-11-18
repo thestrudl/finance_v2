@@ -3,6 +3,7 @@
     /telegram/<secret>   Telegram webhook (same message format as the old Apps Script bot)
     /login               portal login (emailed one-time code)
     /, /year, ...        dashboard, behind login
+    /api/v1/...          read-only JSON for the renovation planner (bearer token)
     /healthz             container health check
 """
 import hmac
@@ -46,6 +47,8 @@ def load_config():
         "HOUSEHOLD_FILE": os.environ.get("HOUSEHOLD_FILE", ""),  # empty: app/household.json, else the example
         "IBKR_FLEX_TOKEN": os.environ.get("IBKR_FLEX_TOKEN", ""),
         "IBKR_FLEX_QUERY_ID": os.environ.get("IBKR_FLEX_QUERY_ID", ""),
+        # Bearer token for /api/v1 (the renovation planner). Empty: no API.
+        "FINANCE_API_TOKEN": os.environ.get("FINANCE_API_TOKEN", ""),
         "TELEGRAM_BOT_TOKEN": os.environ.get("TELEGRAM_BOT_TOKEN", ""),
         "TELEGRAM_WEBHOOK_PATH": os.environ.get("TELEGRAM_WEBHOOK_PATH", ""),
         "TELEGRAM_WEBHOOK_SECRET": os.environ.get("TELEGRAM_WEBHOOK_SECRET", ""),
@@ -80,11 +83,12 @@ def create_app(test_config=None):
     # Traefik terminates TLS and forwards one hop.
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
-    from . import auth, bot, cli, dashboard, db
+    from . import api, auth, bot, cli, dashboard, db
     from .util import fmt_eur, fmt_month
 
     db.init_app(app)
     auth.sync_users(app)
+    app.register_blueprint(api.bp)
     app.register_blueprint(bot.bp)
     app.register_blueprint(auth.bp)
     app.register_blueprint(dashboard.bp)
