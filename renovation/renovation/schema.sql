@@ -94,6 +94,12 @@ CREATE TABLE IF NOT EXISTS task_deps (
 );
 CREATE INDEX IF NOT EXISTS task_deps_needs ON task_deps (needs_id);
 
+-- Each scheduled "ready to start" email, once sent ('YYYY-MM-DD HH:MM:SS' of its slot).
+CREATE TABLE IF NOT EXISTS digest_runs (
+    slot    TEXT PRIMARY KEY,
+    sent_at TEXT NOT NULL
+);
+
 -- Logins: the same passwordless scheme as the finance portal, kept in sync
 -- with RENOVATION_USERS (or PORTAL_USERS) from .env.
 CREATE TABLE IF NOT EXISTS users (

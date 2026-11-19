@@ -1,0 +1,37 @@
+{% macro line(t) -%}
+- {{ t.title }} ({{ t.goal_title }}){% if t.status == 'doing' %}, until {{ t.end | day }}{% else %}, {{ t.days | days_word }}{% endif %}{% if t.cost_cents %}, {{ t.cost_cents | eur }}{% endif %}{% if t.who %}, {{ t.who }}{% endif %}
+{%- if t.flag == 'late' %}
+  LATE: should have started by {{ t.latest_start | day }} to make the deadline
+{%- elif t.flag == 'tight' %}
+  Tight: start by {{ t.latest_start | day }}
+{%- endif %}
+  {{ links.task }}{{ t.id }}
+{%- endmacro -%}
+Hi {{ name }},
+
+{% if ready -%}
+Ready to start{{ ' this weekend' if evening else '' }}: nothing they wait for is left.
+
+{% for t in ready %}{{ line(t) }}
+{% endfor %}
+{%- else -%}
+Nothing is ready to start: everything still waits for something else, or for its date.
+{%- endif %}
+{% if doing %}
+In progress:
+
+{% for t in doing %}{{ line(t) }}
+{% endfor %}
+{%- endif %}
+{% if booked %}
+Booked this week (nothing to wait for but the date):
+
+{% for t in booked %}- {{ t.title }} ({{ t.goal_title }}), from {{ t.start | day }}
+{% endfor %}
+{%- endif %}
+{% if late %}
+{{ late }} task{{ '' if late == 1 else 's' }} {{ 'is' if late == 1 else 'are' }} behind schedule: {{ links.upcoming }}
+{% endif %}
+The plan: {{ links.plan }}
+
+You get this every {{ schedule }}.

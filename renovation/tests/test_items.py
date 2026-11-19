@@ -283,7 +283,7 @@ def test_migration_3_keeps_payments(tmp_path):
     app = make_app(tmp_path)
     with app.app_context():
         db = get_db()
-        assert db.execute("PRAGMA user_version").fetchone()[0] == 3
+        assert db.execute("PRAGMA user_version").fetchone()[0] >= 3
         row = dict(db.execute("SELECT * FROM payments").fetchone())
         assert (row["amount_cents"], row["finance"], row["finance_key"], row["finance_tx_id"]) == (500, "logged", "k1", None)
         db.execute("INSERT INTO payments (goal_id, paid_on, amount_cents, finance, finance_tx_id, created_at) "

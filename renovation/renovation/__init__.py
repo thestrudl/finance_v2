@@ -51,6 +51,8 @@ def load_config():
         "FINANCE_API_TOKEN": os.environ.get("FINANCE_API_TOKEN", ""),
         # The finance category house spending is logged under (Project group).
         "FINANCE_CATEGORY": os.environ.get("RENOVATION_FINANCE_CATEGORY", ""),
+        # When the "ready to start" email goes out (APP_TIMEZONE); empty: never.
+        "DIGEST": os.environ.get("RENOVATION_DIGEST", "mon 08:00, fri 18:00"),
         # A task this many days or fewer from making its deadline is marked tight.
         "TIGHT_DAYS": int(os.environ.get("RENOVATION_TIGHT_DAYS", "3")),
         "SESSION_COOKIE_SECURE": True,

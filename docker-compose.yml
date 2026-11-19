@@ -107,7 +107,8 @@ services:
       - "traefik.http.middlewares.renovation-tls-redirect.redirectscheme.scheme=https"
       - "traefik.http.middlewares.renovation-tls-redirect.redirectscheme.permanent=true"
 
-  # Daily backup of the planner's database, and pruning of old login rows.
+  # The "ready to start" email (Mon/Fri), daily backup of the planner's
+  # database, and pruning of old login rows. Needs the network for SMTP.
   renovation-maintenance:
     image: renovation-app:latest
     container_name: renovation-maintenance
@@ -117,7 +118,8 @@ services:
     command: ["python", "-m", "renovation.maintenance"]
     volumes:
       - renovation-data:/data
-    network_mode: none
+    networks:
+      - internal
     depends_on:
       renovation:
         condition: service_healthy

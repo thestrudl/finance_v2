@@ -87,6 +87,7 @@ MIGRATIONS = [
     _schema,
     _migration_2,
     _migration_3,
+    _schema,  # 4: digest_runs (the twice-weekly email)
 ]
 
 

@@ -1,5 +1,6 @@
-"""Daily backup and pruning, run as its own small container
-(python -m renovation.maintenance) so the web workers never do it twice."""
+"""Background jobs, run as their own small container (python -m
+renovation.maintenance) so the web workers never do them twice: the
+"ready to start" email on its schedule, the daily backup, pruning."""
 import logging
 import signal
 import sqlite3
@@ -10,12 +11,13 @@ from pathlib import Path
 
 from flask import current_app
 
+from . import digest
 from .db import connect, get_db
 from .util import now, ts
 
 log = logging.getLogger("renovation.maintenance")
 
-INTERVAL_SECONDS = 3600
+INTERVAL_SECONDS = 300  # the email goes out within 5 minutes of its time
 
 
 def backup(day, force=False):
@@ -43,6 +45,11 @@ def backup(day, force=False):
 
 def tick(app):
     with app.app_context():
+        try:
+            if slot := digest.run_due(now()):
+                log.info("Sent the digest for %s", slot)
+        except Exception:
+            log.exception("The digest email failed; trying again at the next check")
         if path := backup(now().date()):
             log.info("Backup written to %s", path)
         db = get_db()

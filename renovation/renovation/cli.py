@@ -4,12 +4,13 @@
     docker compose exec renovation flask send-test-email you@example.com
     docker compose exec renovation flask check-finance
     docker compose exec renovation flask backup
+    docker compose exec renovation flask send-digest [--to you@example.com] [--preview]
 """
 from datetime import timedelta
 
 import click
 
-from . import mail, maintenance, money
+from . import digest, mail, maintenance, money
 from .db import get_db
 from .util import fmt_eur, now
 
@@ -47,6 +48,28 @@ def register(app):
             spend = body["category_spend"]
             click.echo(f"Category {spend['category']}: "
                        + (f"{fmt_eur(spend['total_cents'])} in total" if spend["found"] else "not found in finance"))
+
+    @app.cli.command("send-digest")
+    @click.option("--to", "to", multiple=True, help="Send only to this address (repeatable). Default: every user.")
+    @click.option("--preview", is_flag=True, help="Print the text version instead of sending it.")
+    def send_digest(to, preview):
+        """Send the "ready to start" email now (it also goes out on RENOVATION_DIGEST's schedule)."""
+        if preview:
+            sent = []
+            original = mail.deliver
+            mail.deliver = sent.append
+            try:
+                digest.send(now(), recipients=list(to) or None)
+            finally:
+                mail.deliver = original
+            if sent:
+                click.echo(f"Subject: {sent[0]['Subject']}\n")
+                click.echo(sent[0].get_body(("plain",)).get_content())
+            else:
+                click.echo("Nobody to send it to.")
+            return
+        count = digest.send(now(), recipients=list(to) or None)
+        click.echo(f"Sent to {count} {'person' if count == 1 else 'people'}.")
 
     @app.cli.command("backup")
     def backup():

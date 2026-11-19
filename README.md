@@ -151,6 +151,8 @@ A second app for a house renovation, at its own address and behind the same kind
 - Click a dependency arrow to remove that link.
 - Whatever depends on a task moves with it.
 
+**Email on Monday morning and Friday evening** (`RENOVATION_DIGEST`, default `mon 08:00, fri 18:00`): everyone who can log in gets what's ready to start (nothing it waits for is left), what's in progress, what's booked for the coming week, and how many tasks are behind schedule. Each slot goes out once, even across restarts; one missed while the server was down still goes out within 6 hours. Try it with `docker compose exec renovation flask send-digest --preview`.
+
 **Upcoming (phone):** what's behind schedule, in progress, ready to start and coming up in the next 30 days, with **Start** and **Done** buttons.
 
 **Money:**
