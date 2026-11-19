@@ -35,7 +35,7 @@ finance-scheduler container: monthly repeats, daily backup, morning IBKR sync
   - **Bank and cash, estimated:** the last balance check plus everything logged since, with the drift shown at each new check.
   - **Interactive Brokers:** account value, cash, allocation and positions, from IBKR's read-only Flex Web Service.
   - **Net worth:** the two together.
-- **Forecast:** bank and cash, and what's free above the security fund, on any day up to three years ahead. It uses your repeats as set up, the average living month, and income and business costs from the same month last year, plus any planned one-offs (a car, a holiday). It shows the lowest point and when you'd dip into the security fund.
+- **Forecast:** bank and cash, and what's free above the security fund, on any day up to three years ahead. It uses your repeats as set up, the average living month, and income (business income too) from the same month last year, plus any planned one-offs (a car, a holiday). Business costs aren't projected, since they rarely repeat the same way: add regular ones as repeats and expected purchases as planned one-offs. It shows the lowest point and when you'd dip into the security fund.
 - **Data:** edit transactions, merge misspelt categories (every entry keeps its original spelling, and Split off undoes a merge), set groups and budgets, and manage repeats.
 
 Groups decide what counts where: *Living*, *Business*, *Project* (a house, a wedding) and *Savings*. "Without projects & savings" hides one-off amounts so they don't swamp everyday spending.

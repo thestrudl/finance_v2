@@ -90,7 +90,7 @@
   <div class="table-wrap">
     <table class="num tx">
       <thead><tr>
-        <th>Month</th><th>Income</th><th>Repeats in</th><th>Repeats out</th><th>Living</th><th>Business costs</th>
+        <th>Month</th><th>Income</th><th>Repeats in</th><th>Repeats out</th><th>Living</th>
         {% if planned %}<th>Planned</th>{% endif %}<th>Net</th><th>Bank &amp; cash at the end</th>{% if fund %}<th>Free to use</th>{% endif %}
       </tr></thead>
       <tbody>
@@ -102,7 +102,6 @@
           <td class="income">{{ m.repeat_in | eur if m.repeat_in else '' }}</td>
           <td>{{ m.repeat_out | eur if m.repeat_out else '' }}</td>
           <td>{{ m.living | eur }}</td>
-          <td>{{ m.business | eur if m.business else '' }}</td>
           {% if planned %}<td>{{ m.planned | eur(True) if m.planned else '' }}</td>{% endif %}
           <td><span class="delta {{ 'good' if m.net > 0 else ('bad' if m.net < 0 else '') }}">{{ m.net | eur(True) }}</span></td>
           <td><strong>{{ money(m.end) }}</strong></td>
@@ -122,11 +121,13 @@
   <ul class="setup">
     <li><strong>Start:</strong> today's bank &amp; cash estimate{% if current %} ({{ result.start | eur }}){% endif %}, the latest balance check plus everything logged since.</li>
     <li><strong>Repeats</strong> exactly as set up on <a href="{{ url_for('dashboard.repeats_view') }}">Repeats</a>, on their day of the month.</li>
-    <li><strong>Income and business costs</strong> as on the same days of that month a year earlier, so seasons (rentals, the bike season) carry over.
+    <li><strong>Income</strong>, business income included, as on the same days of that month a year earlier, so seasons (rentals, the bike season) carry over.
       A month with no history at all uses the average month.</li>
     <li><strong>Living costs</strong> as the average month of the last {{ result.history_months }} full month{{ 's' if result.history_months != 1 }}, spread over the month the way they usually fall.
       The average rather than the typical (median) month the other pages show: over several months the odd holiday or car repair does happen.</li>
-    <li>Not projected: project and savings entries (one-offs like the house or a wedding; add what you expect as planned one-offs),
+    <li>Not projected: business costs, which mostly don't come back the same way (last year's new bikes aren't this year's;
+      add regular ones as <a href="{{ url_for('dashboard.repeats_view') }}">repeats</a> and expected purchases as planned one-offs),
+      project and savings entries (one-offs like the house or a wedding; add what you expect as planned one-offs),
       entries outside our accounts, and past entries matching a repeat (same category, amount and direction), so a repeat isn't counted twice.</li>
   </ul>
 </section>

@@ -3,8 +3,8 @@
 Each kind of money is predicted its own way, day by day:
 - repeats: exactly as set up, on their day of the month;
 - income: what came in on the same days of that month last year (the latest
-  full year that has the month), business income included;
-- business costs: the same way, so seasonal costs follow seasonal income;
+  full year that has the month), business income included, so seasons
+  (rentals, the bike season) carry over;
 - living costs: the average month of the last 12 full months, day by day
   (big shops early in the month land early). The average, not the median the
   other pages call typical: over several months the odd holiday or car repair
@@ -12,8 +12,10 @@ Each kind of money is predicted its own way, day by day:
 
 History entries that look like an active repeat (same category, amount and
 direction) are left out of the last three, so a repeat isn't counted twice.
-Project and savings entries are one-offs and aren't projected: add the ones
-you expect as planned entries. Entries outside our accounts never count.
+Not projected: business costs, which mostly don't come back the same way
+(this year's new bikes aren't next year's), and project and savings entries,
+which are one-offs. Add the ones you expect as repeats (regular) or planned
+entries. Entries outside our accounts never count.
 A month with no history at all uses the average month instead.
 """
 import calendar
@@ -27,7 +29,7 @@ from .util import month_bounds, month_key, shift_month
 
 MAX_DAYS = 3 * 366
 ONE_OFF_GROUPS = ("project", "savings")
-FROM_LAST_YEAR = ("income", "business")
+FROM_LAST_YEAR = ("income",)
 
 
 def days_in(ym):
@@ -45,11 +47,11 @@ def source_month(ym, this_ym):
 
 def history(db, this_ym):
     """({kind: {month: {day: cents}}}, months that have entries) over the 12
-    full months before `this_ym`; kinds are income, business and living."""
+    full months before `this_ym`; kinds are income and living."""
     start, end = month_bounds(shift_month(this_ym, -12))[0], month_bounds(this_ym)[0]
     repeat_like = {(lookup(db, r["category"]), r["amount_cents"], r["is_income"])
                    for r in db.execute("SELECT category, amount_cents, is_income FROM repeats")}
-    kinds = {kind: defaultdict(lambda: defaultdict(int)) for kind in ("income", "business", "living")}
+    kinds = {kind: defaultdict(lambda: defaultdict(int)) for kind in ("income", "living")}
     months = set()
     for row in db.execute(
         """SELECT t.occurred_at, t.amount_cents, t.is_income, t.category, t.source, t.repeat_id, c.grp
@@ -65,7 +67,7 @@ def history(db, this_ym):
         if row["is_income"]:
             kind = None if row["grp"] in ONE_OFF_GROUPS else "income"
         else:
-            kind = row["grp"] if row["grp"] in ("business", "living") else None
+            kind = "living" if row["grp"] == "living" else None  # business costs aren't projected
         if kind:
             kinds[kind][ym][day] += row["amount_cents"]
     return kinds, months
@@ -107,7 +109,7 @@ def build(db, today, until, start, planned=(), fund=0):
         if row is None or row["month"] != ym:
             source = source_month(ym, this_ym)
             row = {"month": ym, "source": source, "estimated": source not in months, "first": day,
-                   "income": 0, "repeat_in": 0, "repeat_out": 0, "living": 0, "business": 0, "planned": 0}
+                   "income": 0, "repeat_in": 0, "repeat_out": 0, "living": 0, "planned": 0}
             rows.append(row)
             # Day 31 of the source month lands on the last day of a shorter month.
             by_day = {kind: defaultdict(int) for kind in FROM_LAST_YEAR}
@@ -127,7 +129,7 @@ def build(db, today, until, start, planned=(), fund=0):
             row[kind] += cents
 
         balance += (moved["income"] + moved["repeat_in"] + moved["planned"]
-                    - moved["repeat_out"] - moved["living"] - moved["business"])
+                    - moved["repeat_out"] - moved["living"])
         days.append(day)
         balances.append(balance)
         row["last"], row["end"] = day, balance
@@ -139,7 +141,7 @@ def build(db, today, until, start, planned=(), fund=0):
 
     for row in rows:
         row["net"] = (row["income"] + row["repeat_in"] + row["planned"]
-                      - row["repeat_out"] - row["living"] - row["business"])
+                      - row["repeat_out"] - row["living"])
     return {
         "start": start,
         "end": balance,
