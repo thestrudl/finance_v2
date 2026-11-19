@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#171717">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <title>{% block title %}Renovation{% endblock %} · Renovation</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='fonts/fonts.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="{% block body_class %}{% endblock %}">
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="{{ url_for('views.gantt') }}">Renovation</a>
+      <nav class="nav" aria-label="Main">
+        {% if session.user_id %}
+        {% set here = request.endpoint %}
+        <a href="{{ url_for('views.gantt') }}" {% if here == 'views.gantt' %}aria-current="page"{% endif %}>Plan</a>
+        <a href="{{ url_for('views.upcoming') }}" {% if here == 'views.upcoming' %}aria-current="page"{% endif %}>Upcoming</a>
+        <a href="{{ url_for('views.money_view') }}" {% if here == 'views.money_view' %}aria-current="page"{% endif %}>Money</a>
+        {% endif %}
+      </nav>
+      <div class="nav-right">
+        {% if session.user_id %}
+        <span class="nav-user">{{ session.username }}</span>
+        <form method="post" action="{{ url_for('auth.logout') }}" class="logout">
+          <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+          <button type="submit" class="link">Log out</button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+  </header>
+  <main class="page">
+    {% with messages = get_flashed_messages() %}
+      {% for message in messages %}<p class="flash" role="status">{{ message }}</p>{% endfor %}
+    {% endwith %}
+    {% if self.eyebrow() | trim %}<p class="eyebrow"><span class="dot"></span>{{ self.eyebrow() }}</p>{% endif %}
+    {% block content %}{% endblock %}
+  </main>
+  <footer class="site-footer">
+    <div class="site-footer-inner">
+      <span>Renovation · v{{ version }}</span>
+      <a href="https://blog.rokvidmar.xyz/" rel="noopener">blog.rokvidmar.xyz</a>
+    </div>
+  </footer>
+  {% block scripts %}{% endblock %}
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
+{% if false %}{% block eyebrow %}{% endblock %}{% endif %}

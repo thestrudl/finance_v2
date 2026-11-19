@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% from "_macros.html" import flag_badge, needs_picker %}
+{% block title %}{{ task.title if task else 'New task' }}{% endblock %}
+{% block eyebrow %}Task{% endblock %}
+{% block content %}
+<div class="toolbar"><h1>{{ task.title if task else 'New task' }}</h1></div>
+
+{% if not goals %}
+<p class="flash">Add a <a href="{{ url_for('views.new_goal') }}">big item</a> first: every task belongs to one.</p>
+{% else %}
+{% if scheduled %}
+<section class="tiles">
+  <div class="tile">
+    <span class="tile-label">Planned</span>
+    <span class="tile-value small-value">{{ scheduled.start | day }} – {{ scheduled.end | day }}</span>
+    <span class="delta">{{ scheduled.days | days_word }}{% if scheduled.status == 'todo' and scheduled.blocked_by %}, after what it needs{% endif %}</span>
+  </div>
+  {% if scheduled.status != 'done' %}
+  <div class="tile">
+    <span class="tile-label">Must start by</span>
+    <span class="tile-value small-value">{{ scheduled.latest_start | day }}</span>
+    <span class="delta {{ 'bad' if scheduled.flag == 'late' }}">{% if scheduled.slack < 0 %}{{ scheduled.slack | days_word }} late{% else %}{{ scheduled.slack | days_word }} to spare{% endif %}</span>
+  </div>
+  {% endif %}
+</section>
+{% endif %}
+
+<section class="card">
+  {% for e in errors %}<p class="flash error">{{ e }}</p>{% endfor %}
+  <form method="post" class="stack task-form">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <input type="hidden" name="next" value="{{ next_url }}">
+    <div class="form-grid">
+      <label class="span-2">What <input name="title" value="{{ form.title or '' }}" required autofocus placeholder="e.g. Drywall, 2nd floor"></label>
+      <label>Part of
+        <select name="goal_id" required>
+          {% for g in goals %}<option value="{{ g.id }}" {% if form.goal_id == g.id %}selected{% endif %}>{{ g.title }} (by {{ g.deadline_day | day }})</option>{% endfor %}
+        </select>
+      </label>
+      <label>Status
+        <select name="status">
+          {% for key, label in statuses.items() %}<option value="{{ key }}" {% if form.status == key %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Takes (days) <input name="days" type="number" min="1" max="3650" value="{{ form.days or 1 }}" required></label>
+      <label title="Leave empty to start as soon as what it needs is done">Not before <input type="date" name="not_before" value="{{ form.not_before or '' }}"></label>
+      <label>Estimate (€) <input name="cost" value="{{ form.cost or '' }}" inputmode="decimal"></label>
+      {% if scheduled %}
+      <div class="readonly-field">
+        <span class="field-label">Paid · committed</span>
+        <span>{{ scheduled.paid | eur }} · {{ scheduled.committed | eur }}
+          <a class="small" href="{{ url_for('views.edit_goal', goal_id=task.goal_id) }}#money">record on the big item</a></span>
+      </div>
+      {% endif %}
+      <label>Paid at
+        <select name="pay_at">
+          <option value="start" {% if form.pay_at != 'end' %}selected{% endif %}>the start (materials, deposit)</option>
+          <option value="end" {% if form.pay_at == 'end' %}selected{% endif %}>the end (invoice when finished)</option>
+        </select>
+      </label>
+      <label>Who <input name="who" value="{{ form.who or '' }}" placeholder="us, or the contractor"></label>
+      {% if task %}
+      <label>Started on <input type="date" name="started_on" value="{{ form.started_on or '' }}"></label>
+      <label>Finished on <input type="date" name="done_on" value="{{ form.done_on or '' }}"></label>
+      {% endif %}
+    </div>
+
+    {{ needs_picker(choices, needs, 'It starts the day after all of these are finished.') }}
+
+    <label>Notes <textarea name="notes" rows="7" placeholder="What exactly, materials, measurements, the offer, phone numbers…">{{ form.notes or '' }}</textarea></label>
+    <div class="row">
+      <button type="submit" class="primary">Save</button>
+      {% if not task %}<button type="submit" name="another" value="1" class="btn">Save and add another</button>{% endif %}
+      <a class="btn" href="{{ next_url or url_for('views.gantt') }}">Cancel</a>
+    </div>
+  </form>
+  {% if task %}
+  <form method="post" action="{{ url_for('views.delete_task', task_id=task.id) }}" class="delete-form"
+        data-confirm="Delete {{ task.title }}?">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <input type="hidden" name="next" value="{{ next_url }}">
+    <button type="submit" class="link danger">Delete this task</button>
+  </form>
+  {% endif %}
+</section>
+{% endif %}
+{% endblock %}

@@ -3,8 +3,12 @@
 #
 #   https://$FINANCE_HOST/telegram/<TELEGRAM_WEBHOOK_PATH>   Telegram webhook
 #   https://$FINANCE_HOST/                                   dashboard (login)
+#   https://$RENOVATION_HOST/                                renovation planner (login; optional,
+#                                                            on with COMPOSE_PROFILES=renovation)
 #
-# Data lives in the finance-data volume (SQLite + daily backups in /data/backups).
+# Data lives in the finance-data volume (SQLite + daily backups in /data/backups),
+# the planner's in renovation-data. The planner reads liquidity from finance's
+# /api/v1 over the internal network; /api is not routed publicly.
 #
 # Run (from this directory, with a filled-in .env beside this file):
 #   docker compose config          # parse check, changes nothing
@@ -31,6 +35,7 @@ services:
     container_name: finance
     networks:
       - nginx-proxy
+      - internal
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"]
       interval: 30s
@@ -40,13 +45,14 @@ services:
       - "traefik.enable=true"
       - "traefik.docker.network=nginx-proxy"
 
-      - "traefik.http.routers.finance.rule=Host(`${FINANCE_HOST}`)"
+      # /api is only for the renovation planner, over the internal network.
+      - "traefik.http.routers.finance.rule=Host(`${FINANCE_HOST}`) && !PathPrefix(`/api`)"
       - "traefik.http.routers.finance.entrypoints=websecure"
       - "traefik.http.routers.finance.tls=true"
       - "traefik.http.routers.finance.tls.certresolver=letsencrypt"
       - "traefik.http.services.finance.loadbalancer.server.port=8000"
 
-      - "traefik.http.routers.finance-http.rule=Host(`${FINANCE_HOST}`)"
+      - "traefik.http.routers.finance-http.rule=Host(`${FINANCE_HOST}`) && !PathPrefix(`/api`)"
       - "traefik.http.routers.finance-http.entrypoints=web"
       - "traefik.http.routers.finance-http.middlewares=finance-tls-redirect"
       - "traefik.http.routers.finance-http.service=finance"
@@ -64,9 +70,66 @@ services:
       finance:
         condition: service_healthy
 
+  # Renovation planner: Gantt chart of the work, and the cash flow it needs.
+  # Its own image, database and login; reads finance only through /api/v1.
+  renovation:
+    build: ./renovation
+    image: renovation-app:latest
+    container_name: renovation
+    profiles: ["renovation"]
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - renovation-data:/data
+    networks:
+      - nginx-proxy
+      - internal
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=nginx-proxy"
+
+      - "traefik.http.routers.renovation.rule=Host(`${RENOVATION_HOST}`)"
+      - "traefik.http.routers.renovation.entrypoints=websecure"
+      - "traefik.http.routers.renovation.tls=true"
+      - "traefik.http.routers.renovation.tls.certresolver=letsencrypt"
+      - "traefik.http.services.renovation.loadbalancer.server.port=8000"
+
+      - "traefik.http.routers.renovation-http.rule=Host(`${RENOVATION_HOST}`)"
+      - "traefik.http.routers.renovation-http.entrypoints=web"
+      - "traefik.http.routers.renovation-http.middlewares=renovation-tls-redirect"
+      - "traefik.http.routers.renovation-http.service=renovation"
+
+      - "traefik.http.middlewares.renovation-tls-redirect.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.renovation-tls-redirect.redirectscheme.permanent=true"
+
+  # The "ready to start" email (Mon/Fri), daily backup of the planner's
+  # database, and pruning of old login rows. Needs the network for SMTP.
+  renovation-maintenance:
+    image: renovation-app:latest
+    container_name: renovation-maintenance
+    profiles: ["renovation"]
+    restart: unless-stopped
+    env_file: .env
+    command: ["python", "-m", "renovation.maintenance"]
+    volumes:
+      - renovation-data:/data
+    networks:
+      - internal
+    depends_on:
+      renovation:
+        condition: service_healthy
+
 volumes:
   finance-data:
+  renovation-data:
 
 networks:
   nginx-proxy:
     external: true
+  # finance <-> renovation only; nothing else reaches the API.
+  internal:

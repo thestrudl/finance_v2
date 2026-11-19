@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% from "_macros.html" import commitment_fields %}
+{% block title %}{{ commitment.what }}{% endblock %}
+{% block eyebrow %}{{ goal.title }} · commitment{% endblock %}
+{% block content %}
+<div class="toolbar"><h1>{{ commitment.what }}</h1></div>
+<section class="card">
+  {% for e in errors %}<p class="flash error">{{ e }}</p>{% endfor %}
+  <form method="post" class="stack">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    {{ commitment_fields(form, goal_plan) }}
+    <div class="row">
+      <button type="submit" class="primary">Save</button>
+      <a class="btn" href="{{ url_for('views.edit_goal', goal_id=goal.id) }}#money">Cancel</a>
+    </div>
+  </form>
+  <form method="post" action="{{ url_for('views.delete_commitment', commitment_id=commitment.id) }}" class="delete-form"
+        data-confirm="Delete this commitment? Payments made towards it stay.">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <button type="submit" class="link danger">Delete this commitment</button>
+  </form>
+</section>
+{% endblock %}
