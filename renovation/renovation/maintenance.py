@@ -20,6 +20,7 @@ log = logging.getLogger("renovation.maintenance")
 INTERVAL_SECONDS = 300  # the email goes out within 5 minutes of its time
 
 
+# RETIRE after central backup runner has 7 successful nights (backup contract)
 def backup(day, force=False):
     """Copy of the database into BACKUP_DIR, keeping the newest BACKUP_KEEP.
     Returns the new file's path, or None if that day's copy already exists."""
