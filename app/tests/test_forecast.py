@@ -41,7 +41,7 @@ def year_of_history(app):
         add_tx(app, f"{ym}-18 10:00:00", 50_00, "insurance", source="import")  # logged by the old repeat
     add_tx(app, "2025-11-15 10:00:00", 2000_00, "placa", is_income=True)
     add_tx(app, "2025-12-15 10:00:00", 2000_00, "placa", is_income=True)
-    add_tx(app, "2025-12-03 10:00:00", 100_00, "sunny")              # a business cost
+    add_tx(app, "2025-12-03 10:00:00", 100_00, "sunny")              # a business cost: not projected
     add_tx(app, "2025-12-10 10:00:00", 9000_00, "hisa")              # a one-off project cost
     add_repeat(app, 50_00, "Insurance", 18)
 
@@ -50,10 +50,10 @@ def test_forecast_month_by_month(app, year_of_history):
     planned = [{"day": date(2026, 12, 20), "cents": -500_00, "label": "car"}]
     result = build(app, date(2026, 12, 31), planned=planned, fund=800_00)
     nov, dec = result["months"]
-    assert (nov["income"], nov["repeat_out"], nov["living"], nov["business"], nov["net"]) == (
-        2000_00, 50_00, 300_00, 0, 1650_00)
-    assert (dec["income"], dec["business"], dec["planned"], dec["net"]) == (2000_00, 100_00, -500_00, 1050_00)
-    assert (nov["end"], dec["end"]) == (2650_00, 3700_00) and result["end"] == 3700_00
+    assert (nov["income"], nov["repeat_out"], nov["living"], nov["net"]) == (2000_00, 50_00, 300_00, 1650_00)
+    assert (dec["income"], dec["planned"], dec["net"]) == (2000_00, -500_00, 1150_00)  # last December's bikes don't come back
+    assert "business" not in dec
+    assert (nov["end"], dec["end"]) == (2650_00, 3800_00) and result["end"] == 3800_00
     assert (nov["first"], nov["last"], nov["source"], nov["estimated"]) == (date(2026, 11, 2), date(2026, 11, 30),
                                                                             "2025-11", False)
     # Living costs land on the 5th, income only on the 15th: the low point is in between.
@@ -108,3 +108,15 @@ def test_forecast_page_without_a_balance_check(logged_in):
 
 def test_forecast_needs_login(client):
     assert client.get("/forecast").headers["Location"].startswith("/login")
+
+
+def test_business_income_counts_but_business_costs_dont(app):
+    """Rentals come back with the season; what a business spends is up to us."""
+    for i in range(12):
+        add_tx(app, f"{shift_month('2025-11', i)}-05 10:00:00", 300_00, "food")
+    add_tx(app, "2025-12-12 10:00:00", 1500_00, "sunny", is_income=True)   # bike rentals last December
+    add_tx(app, "2025-12-14 10:00:00", 4000_00, "sunny")                   # new bikes last December
+    result = build(app, date(2026, 12, 31))
+    dec = result["months"][1]
+    assert dec["income"] == 1500_00
+    assert dec["net"] == 1500_00 - dec["living"]
