@@ -60,6 +60,11 @@ services:
       - "traefik.http.middlewares.finance-tls-redirect.redirectscheme.scheme=https"
       - "traefik.http.middlewares.finance-tls-redirect.redirectscheme.permanent=true"
 
+      - "backup.dump=sqlite"
+      - "backup.sqlite=/data/finance.db"
+      - "backup.paths=/data"
+      - "backup.exclude=/data/finance.db*,/data/backups"
+
   # Repeat entries, daily backup, pruning. Same image, no network exposure
   # needed beyond outbound calls to Telegram for error alerts.
   finance-scheduler:
@@ -106,6 +111,11 @@ services:
 
       - "traefik.http.middlewares.renovation-tls-redirect.redirectscheme.scheme=https"
       - "traefik.http.middlewares.renovation-tls-redirect.redirectscheme.permanent=true"
+
+      - "backup.dump=sqlite"
+      - "backup.sqlite=/data/renovation.db"
+      - "backup.paths=/data"
+      - "backup.exclude=/data/renovation.db*,/data/backups"
 
   # The "ready to start" email (Mon/Fri), daily backup of the planner's
   # database, and pruning of old login rows. Needs the network for SMTP.

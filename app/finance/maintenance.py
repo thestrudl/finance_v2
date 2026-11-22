@@ -6,6 +6,7 @@ from flask import current_app
 from .db import connect
 
 
+# RETIRE after central backup runner has 7 successful nights (backup contract)
 def backup(today, force=False):
     """Daily copy of the database into BACKUP_DIR, keeping the newest BACKUP_KEEP.
     Returns the new file's path, or None if today's copy already exists."""
