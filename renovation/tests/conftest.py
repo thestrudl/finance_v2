@@ -35,8 +35,13 @@ def make_app(tmp_path, **overrides):
 
 @pytest.fixture(autouse=True)
 def frozen_today(monkeypatch):
-    """Every test runs on 18 November 2026 at noon."""
-    monkeypatch.setattr(util, "now", lambda: datetime(2026, 11, 18, 12, 0))
+    """Every test runs on 18 November 2026 at noon. Modules that did
+    `from .util import now` hold their own reference, so they are frozen too."""
+    from renovation import auth, cli, ledger, maintenance, views
+
+    frozen = lambda: datetime(2026, 11, 18, 12, 0)  # noqa: E731
+    for module in (util, auth, cli, ledger, maintenance, views):
+        monkeypatch.setattr(module, "now", frozen)
 
 
 @pytest.fixture
