@@ -6,11 +6,14 @@
   <meta name="robots" content="noindex, nofollow">
   <meta name="color-scheme" content="dark">
   <meta name="theme-color" content="#171717">
-  <title>{% block title %}Finance{% endblock %} · Finance</title>
+  <title>{% if restore_mode %}RESTORE COPY · {% endif %}{% block title %}Finance{% endblock %} · Finance</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='fonts/fonts.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
+  {%- if restore_mode %}
+  <div class="restore-banner" role="alert">RESTORE COPY · not production · nothing is sent out</div>
+  {%- endif %}
   <header class="topbar">
     <div class="topbar-inner">
       <a class="brand" href="{{ url_for('dashboard.overview') }}">Finance</a>

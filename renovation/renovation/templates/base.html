@@ -7,11 +7,14 @@
   <meta name="color-scheme" content="dark">
   <meta name="theme-color" content="#171717">
   <meta name="csrf-token" content="{{ csrf_token() }}">
-  <title>{% block title %}Renovation{% endblock %} · Renovation</title>
+  <title>{% if restore_mode %}RESTORE COPY · {% endif %}{% block title %}Renovation{% endblock %} · Renovation</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='fonts/fonts.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body class="{% block body_class %}{% endblock %}">
+  {%- if restore_mode %}
+  <div class="restore-banner" role="alert">RESTORE COPY · not production · nothing is sent out</div>
+  {%- endif %}
   <header class="topbar">
     <div class="topbar-inner">
       <a class="brand" href="{{ url_for('views.gantt') }}">Renovation</a>

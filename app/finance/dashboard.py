@@ -5,7 +5,7 @@ import statistics
 from datetime import date, timedelta
 from decimal import InvalidOperation
 
-from flask import Blueprint, abort, flash, redirect, render_template, request, session, url_for
+from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, session, url_for
 
 from . import categories, forecast, holdings, ibkr, importer, insights, liquidity
 from .bot import run_in_background
@@ -437,6 +437,9 @@ def holdings_sync():
     db = get_db()
     if not ibkr.configured():
         flash("Set IBKR_FLEX_TOKEN and IBKR_FLEX_QUERY_ID in .env first.")
+        return redirect(url_for(".holdings_view"))
+    if current_app.config["RESTORE_MODE"]:
+        flash("This is a restored copy (RESTORE_MODE): it doesn't contact IBKR.")
         return redirect(url_for(".holdings_view"))
     last = ibkr.status(db)["last_attempt"]
     if last and last > ts(now() - timedelta(minutes=1)):

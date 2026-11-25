@@ -65,7 +65,7 @@ Python 3.12, Flask, gunicorn and SQLite, with Chart.js (vendored) and matplotlib
 
 ## Setup
 
-Requirements: a server with Docker, a domain, Traefik on an external `nginx-proxy` network with a `letsencrypt` certificate resolver (or adapt the labels in `docker-compose.yml`), a Telegram bot from @BotFather, and an SMTP mailbox.
+Requirements: a server with Docker, a domain, Traefik on an external `nginx-proxy` network with a `letsencrypt` certificate resolver (other names: set `TRAEFIK_NETWORK`, `TRAEFIK_CERTRESOLVER` and the entrypoints in `.env`, see `.env.example`), a Telegram bot from @BotFather, and an SMTP mailbox.
 
 1. Clone the repository, copy `.env.example` to `.env`, and fill it in. Generate random values with:
    ```sh
@@ -182,7 +182,13 @@ To turn it on:
 
 Finance answers `/api/v1` only with the token, and only over the internal Docker network. Traefik doesn't route `/api` publicly. Logged payments are ordinary transactions in finance; a retried request never logs one twice.
 
+## Deploying
+
+On the server, `./deploy.sh` runs `docker compose up -d --build` and then records the deployed commit in `.env.deploy`, so a backup of the app directory says which version ran. Extra arguments go to `docker compose up`.
+
 ## Backups
+
+On spaceshuttle the central backup runner dumps both databases and copies the app directory every night (the `backup.*` labels in `docker-compose.yml`). [RESTORE.md](RESTORE.md) explains how to bring a copy back up, including `RESTORE_MODE=1`, which keeps a restored copy from sending anything out.
 
 The scheduler writes `/data/backups/finance-YYYY-MM-DD.db` daily and keeps 14 copies. They sit on the same disk, so copy one elsewhere now and then:
 

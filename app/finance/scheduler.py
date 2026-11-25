@@ -1,7 +1,8 @@
 """Background jobs, run as their own container (python -m finance.scheduler)
 so the web workers never run them twice: repeat entries, bill reminders, the daily backup,
 pruning old bookkeeping rows (update ids, login events and tokens), and the
-morning IBKR holdings sync."""
+morning IBKR holdings sync. With RESTORE_MODE on, only the jobs that stay
+inside the app run: no bill reminder, no IBKR sync, no Telegram alerts."""
 import logging
 import signal
 import sys
@@ -26,7 +27,7 @@ def tick(app):
         created = repeats.run_due(db, today)
         if created:
             log.info("Logged %d repeat entries", len(created))
-        if bills.remind(db, now()):
+        if not app.config["RESTORE_MODE"] and bills.remind(db, now()):
             log.info("Sent the bill reminder")
         if path := maintenance.backup(today):
             log.info("Backup written to %s", path)

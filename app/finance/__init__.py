@@ -7,6 +7,7 @@
     /healthz             container health check
 """
 import hmac
+import logging
 import os
 import secrets
 from datetime import timedelta
@@ -21,6 +22,10 @@ VERSION = "2.1"
 def _env_ids(name):
     raw = os.environ.get(name, "")
     return {int(part) for part in raw.replace(" ", "").split(",") if part}
+
+
+def _env_flag(name):
+    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
 
 
 def _env_people(name):
@@ -57,6 +62,10 @@ def load_config():
         # Days of the month when bills not logged yet are listed in Telegram.
         "BILL_REMINDER_DAYS": os.environ.get("BILL_REMINDER_DAYS", "10,15,20"),
         "BILL_REMINDER_CHAT": os.environ.get("BILL_REMINDER_CHAT", ""),  # empty: the household group
+        # A restored copy (RESTORE.md): the app runs, but nothing leaves it.
+        # Mail goes to RESTORE_MAIL_TO or only to the log; the rest is off.
+        "RESTORE_MODE": _env_flag("RESTORE_MODE"),
+        "RESTORE_MAIL_TO": os.environ.get("RESTORE_MAIL_TO", "").strip(),
         # Tests run background work inline so they can assert on it.
         "SYNC_TASKS": False,
         "SESSION_COOKIE_SECURE": True,
@@ -79,6 +88,10 @@ def create_app(test_config=None):
         app.config.update(test_config)
     if not app.config["SECRET_KEY"]:
         raise RuntimeError("SECRET_KEY is not set (see .env.example)")
+    if app.config["RESTORE_MODE"]:
+        logging.getLogger(__name__).warning(
+            "RESTORE_MODE is on: no Telegram, no IBKR, no bill reminders; mail goes to %s",
+            app.config["RESTORE_MAIL_TO"] or "the log only")
 
     # Traefik terminates TLS and forwards one hop.
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
@@ -96,6 +109,7 @@ def create_app(test_config=None):
 
     app.jinja_env.globals["csrf_token"] = get_csrf_token
     app.jinja_env.globals["version"] = VERSION
+    app.jinja_env.globals["restore_mode"] = app.config["RESTORE_MODE"]
     app.jinja_env.filters["eur"] = fmt_eur
     app.jinja_env.filters["month_name"] = fmt_month
 

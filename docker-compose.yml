@@ -10,9 +10,14 @@
 # the planner's in renovation-data. The planner reads liquidity from finance's
 # /api/v1 over the internal network; /api is not routed publicly.
 #
+# Traefik wiring comes from .env, with spaceshuttle's values as defaults:
+# TRAEFIK_NETWORK (nginx-proxy), TRAEFIK_CERTRESOLVER (letsencrypt),
+# TRAEFIK_ENTRYPOINT_HTTPS (websecure), TRAEFIK_ENTRYPOINT_HTTP (web).
+# Restoring on another host: see RESTORE.md.
+#
 # Run (from this directory, with a filled-in .env beside this file):
 #   docker compose config          # parse check, changes nothing
-#   docker compose up -d --build
+#   ./deploy.sh                    # records the commit in .env.deploy, then up -d --build
 #
 # Verify:
 #   curl -sI https://$FINANCE_HOST/healthz | head -1       # 200
@@ -43,17 +48,17 @@ services:
       retries: 3
     labels:
       - "traefik.enable=true"
-      - "traefik.docker.network=nginx-proxy"
+      - "traefik.docker.network=${TRAEFIK_NETWORK:-nginx-proxy}"
 
       # /api is only for the renovation planner, over the internal network.
       - "traefik.http.routers.finance.rule=Host(`${FINANCE_HOST}`) && !PathPrefix(`/api`)"
-      - "traefik.http.routers.finance.entrypoints=websecure"
+      - "traefik.http.routers.finance.entrypoints=${TRAEFIK_ENTRYPOINT_HTTPS:-websecure}"
       - "traefik.http.routers.finance.tls=true"
-      - "traefik.http.routers.finance.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.finance.tls.certresolver=${TRAEFIK_CERTRESOLVER:-letsencrypt}"
       - "traefik.http.services.finance.loadbalancer.server.port=8000"
 
       - "traefik.http.routers.finance-http.rule=Host(`${FINANCE_HOST}`) && !PathPrefix(`/api`)"
-      - "traefik.http.routers.finance-http.entrypoints=web"
+      - "traefik.http.routers.finance-http.entrypoints=${TRAEFIK_ENTRYPOINT_HTTP:-web}"
       - "traefik.http.routers.finance-http.middlewares=finance-tls-redirect"
       - "traefik.http.routers.finance-http.service=finance"
 
@@ -96,16 +101,16 @@ services:
       retries: 3
     labels:
       - "traefik.enable=true"
-      - "traefik.docker.network=nginx-proxy"
+      - "traefik.docker.network=${TRAEFIK_NETWORK:-nginx-proxy}"
 
       - "traefik.http.routers.renovation.rule=Host(`${RENOVATION_HOST}`)"
-      - "traefik.http.routers.renovation.entrypoints=websecure"
+      - "traefik.http.routers.renovation.entrypoints=${TRAEFIK_ENTRYPOINT_HTTPS:-websecure}"
       - "traefik.http.routers.renovation.tls=true"
-      - "traefik.http.routers.renovation.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.renovation.tls.certresolver=${TRAEFIK_CERTRESOLVER:-letsencrypt}"
       - "traefik.http.services.renovation.loadbalancer.server.port=8000"
 
       - "traefik.http.routers.renovation-http.rule=Host(`${RENOVATION_HOST}`)"
-      - "traefik.http.routers.renovation-http.entrypoints=web"
+      - "traefik.http.routers.renovation-http.entrypoints=${TRAEFIK_ENTRYPOINT_HTTP:-web}"
       - "traefik.http.routers.renovation-http.middlewares=renovation-tls-redirect"
       - "traefik.http.routers.renovation-http.service=renovation"
 
@@ -139,7 +144,10 @@ volumes:
   renovation-data:
 
 networks:
+  # Traefik's network. The key stays nginx-proxy; the real name comes from
+  # TRAEFIK_NETWORK (default nginx-proxy, as on spaceshuttle).
   nginx-proxy:
     external: true
+    name: ${TRAEFIK_NETWORK:-nginx-proxy}
   # finance <-> renovation only; nothing else reaches the API.
   internal:

@@ -32,7 +32,11 @@ def register(app):
             raise click.ClickException("Not set: " + ", ".join(missing))
         mail.deliver(mail.build(address, "Renovation test email",
                                 f"SMTP works: sent through {cfg['SMTP_HOST']}:{cfg['SMTP_PORT']} as {cfg['SMTP_USERNAME']}."))
-        click.echo(f"Sent to {address}.")
+        if cfg["RESTORE_MODE"]:
+            click.echo(f"RESTORE_MODE: sent to {cfg['RESTORE_MAIL_TO']} instead." if cfg["RESTORE_MAIL_TO"]
+                       else "RESTORE_MODE: not sent, written to the log only.")
+        else:
+            click.echo(f"Sent to {address}.")
 
     @app.cli.command("check-finance")
     def check_finance():

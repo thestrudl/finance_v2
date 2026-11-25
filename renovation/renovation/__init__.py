@@ -12,6 +12,7 @@ Liquidity comes from the finance app's read-only API over the internal Docker
 network; nothing here writes to finance.
 """
 import hmac
+import logging
 import os
 import secrets
 from datetime import timedelta
@@ -27,6 +28,10 @@ def _env_people(name):
     """'Ana Novak <ana@x.com>, Ben <ben@y.com>' -> [(name, email), ...]"""
     return [(person.strip(), address.strip().lower())
             for person, address in getaddresses([os.environ.get(name, "")]) if "@" in address]
+
+
+def _env_flag(name):
+    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
 
 
 def load_config():
@@ -55,6 +60,10 @@ def load_config():
         "DIGEST": os.environ.get("RENOVATION_DIGEST", "mon 08:00, fri 18:00"),
         # A task this many days or fewer from making its deadline is marked tight.
         "TIGHT_DAYS": int(os.environ.get("RENOVATION_TIGHT_DAYS", "3")),
+        # A restored copy (RESTORE.md): the app runs, but nothing leaves it.
+        # Mail goes to RESTORE_MAIL_TO or only to the log; the rest is off.
+        "RESTORE_MODE": _env_flag("RESTORE_MODE"),
+        "RESTORE_MAIL_TO": os.environ.get("RESTORE_MAIL_TO", "").strip(),
         "SESSION_COOKIE_SECURE": True,
         "SESSION_COOKIE_HTTPONLY": True,
         "SESSION_COOKIE_SAMESITE": "Lax",
@@ -76,6 +85,9 @@ def create_app(test_config=None):
         app.config.update(test_config)
     if not app.config["SECRET_KEY"]:
         raise RuntimeError("RENOVATION_SECRET_KEY is not set (see .env.example)")
+    if app.config["RESTORE_MODE"]:
+        logging.getLogger(__name__).warning(
+            "RESTORE_MODE is on: no digest email; mail goes to %s", app.config["RESTORE_MAIL_TO"] or "the log only")
 
     # Traefik terminates TLS and forwards one hop.
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
@@ -91,6 +103,7 @@ def create_app(test_config=None):
 
     app.jinja_env.globals["csrf_token"] = get_csrf_token
     app.jinja_env.globals["version"] = VERSION
+    app.jinja_env.globals["restore_mode"] = app.config["RESTORE_MODE"]
     app.jinja_env.filters["eur"] = fmt_eur
     app.jinja_env.filters["day"] = fmt_day
 

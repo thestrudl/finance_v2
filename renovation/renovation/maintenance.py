@@ -1,6 +1,7 @@
 """Background jobs, run as their own small container (python -m
 renovation.maintenance) so the web workers never do them twice: the
-"ready to start" email on its schedule, the daily backup, pruning."""
+"ready to start" email on its schedule, the daily backup, pruning.
+With RESTORE_MODE on, the email doesn't go out (the slot isn't marked sent)."""
 import logging
 import signal
 import sqlite3
@@ -46,11 +47,12 @@ def backup(day, force=False):
 
 def tick(app):
     with app.app_context():
-        try:
-            if slot := digest.run_due(now()):
-                log.info("Sent the digest for %s", slot)
-        except Exception:
-            log.exception("The digest email failed; trying again at the next check")
+        if not app.config["RESTORE_MODE"]:
+            try:
+                if slot := digest.run_due(now()):
+                    log.info("Sent the digest for %s", slot)
+            except Exception:
+                log.exception("The digest email failed; trying again at the next check")
         if path := backup(now().date()):
             log.info("Backup written to %s", path)
         db = get_db()

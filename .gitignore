@@ -1,4 +1,7 @@
 .env
+# Written by deploy.sh on the server: which commit runs.
+.env.deploy
+.env.deploy.tmp
 __pycache__/
 *.pyc
 .pytest_cache/

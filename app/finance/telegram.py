@@ -1,5 +1,7 @@
 """Thin Telegram Bot API client. Every call goes through api() so tests can
-replace that one function."""
+replace that one function. With RESTORE_MODE on, api() calls nothing and only
+logs what it would have sent: a restored copy must not message the household,
+and must never re-point the production bot's webhook."""
 import logging
 
 import requests
@@ -8,9 +10,15 @@ from flask import current_app
 log = logging.getLogger(__name__)
 
 MAX_MESSAGE = 4000
+RESTORE_REFUSAL = "RESTORE_MODE is on: nothing is sent to Telegram"
 
 
 def api(method, payload=None, files=None):
+    if current_app.config.get("RESTORE_MODE"):
+        payload = payload or {}
+        log.warning("RESTORE_MODE: Telegram %s to %s not sent: %s", method, payload.get("chat_id", "-"),
+                    str(payload.get("text") or payload.get("caption") or "")[:300])
+        return {"ok": False, "description": RESTORE_REFUSAL}
     url = f"https://api.telegram.org/bot{current_app.config['TELEGRAM_BOT_TOKEN']}/{method}"
     try:
         if files:

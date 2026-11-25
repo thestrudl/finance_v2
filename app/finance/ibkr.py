@@ -248,8 +248,10 @@ def status(db):
 
 def sync(days=None):
     """Fetch, parse and store; records the outcome. Returns the days stored."""
-    db = get_db()
     cfg = current_app.config
+    if cfg.get("RESTORE_MODE"):
+        raise FlexError("restore", "RESTORE_MODE is on, so IBKR isn't contacted")
+    db = get_db()
     moment = ts(now())
     db.execute("INSERT INTO sync_status (name, last_attempt) VALUES ('ibkr', ?) "
                "ON CONFLICT (name) DO UPDATE SET last_attempt = excluded.last_attempt", (moment,))
@@ -283,7 +285,7 @@ def _alert_once(db, message):
 
 def due(db):
     """Once a day after SYNC_AFTER_HOUR, retrying hourly until it works."""
-    if not configured():
+    if not configured() or current_app.config.get("RESTORE_MODE"):
         return False
     moment = now()
     if moment.hour < SYNC_AFTER_HOUR:
